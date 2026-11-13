@@ -1,0 +1,9 @@
+{
+  "name": "@ccic/logan-harmony",
+  "version": "0.1.0",
+  "description": "Logan HarmonyOS client SDK: shared clogan core (same C sources as Android/iOS) + system crash channels + Log dual-write compat. MIT.",
+  "main": "index.ets",
+  "author": "ccic",
+  "license": "MIT",
+  "dependencies": { "liblogan_napi.so": "file:./src/main/cpp/types/liblogan_napi" }
+}

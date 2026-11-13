@@ -1,0 +1,12 @@
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [
+      { "name": "default", "compatibleSdkVersion": "5.0.0(12)", "runtimeOS": "HarmonyOS", "targetSdkVersion": "6.1.1(24)" }
+    ],
+    "buildModeSet": [ { "name": "debug" }, { "name": "release" } ]
+  },
+  "modules": [
+    { "name": "LoganHarmony", "srcPath": "./LoganHarmony", "targets": [{ "name": "default", "applyToProducts": ["default"] }] }
+  ]
+}
