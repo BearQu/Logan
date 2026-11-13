@@ -41,8 +41,11 @@ public class LoganCrashUploadController {
                 return LoganResponse.badParam("empty body");
             }
             String json = new String(maybeGunzip(request, raw), "UTF-8");
-            boolean fresh = crashService.ingest(json);
-            return LoganResponse.success(fresh ? "saved" : "duplicate");
+            int r = crashService.ingest(json);
+            if (r < 0) {
+                return LoganResponse.badParam("invalid crash envelope");
+            }
+            return LoganResponse.success(r == 1 ? "saved" : "duplicate");
         } catch (Exception e) {
             LOGGER.error("crash upload failed: " + e.getMessage());
             return LoganResponse.exception("crash upload failed");

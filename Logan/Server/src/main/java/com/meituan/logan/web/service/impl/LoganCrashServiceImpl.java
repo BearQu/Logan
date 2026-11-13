@@ -22,6 +22,9 @@ import java.util.List;
  */
 @Service("loganCrashService")
 public class LoganCrashServiceImpl implements LoganCrashService {
+    public static final int BAD = -1;
+    public static final int DUPLICATE = 0;
+    public static final int SAVED = 1;
     private static final Logger LOGGER = Logger.getLogger(LoganCrashServiceImpl.class);
     private static final int MAX_TRACKED_DEVICES = 500;
     private static final int MAX_SAMPLE_BYTES = 120 * 1024; // issue 样本截断，tombstone 原文在 logan_crash.content
@@ -30,21 +33,21 @@ public class LoganCrashServiceImpl implements LoganCrashService {
     private LoganCrashMapper crashMapper;
 
     @Override
-    public boolean ingest(String envelopeJson) {
+    public int ingest(String envelopeJson) {
         try {
             LoganCrashDTO dto = parse(envelopeJson);
             if (dto == null) {
-                return false;
+                return BAD;
             }
             int inserted = crashMapper.insertIgnore(dto);
             if (inserted <= 0) {
-                return false; // content_hash 撞上（通道 A 已传 / 通道 B 重扫）
+                return DUPLICATE; // content_hash 撞上（通道 A 已传 / 通道 B 重扫）
             }
             aggregateToIssue(dto);
-            return true;
+            return SAVED;
         } catch (Exception e) {
-            LOGGER.error("crash ingest failed: " + e.getMessage());
-            return false;
+            LOGGER.error("crash ingest failed: " + e.getMessage(), e);
+            return BAD;
         }
     }
 
@@ -79,8 +82,12 @@ public class LoganCrashServiceImpl implements LoganCrashService {
         dto.setReleaseVer(o.getString("release"));
         dto.setAbi(o.getString("abi"));
         dto.setSignalInfo(o.getString("signal"));
-        JSONArray frames = o.getJSONArray("topFrames");
-        dto.setTopFrames(frames == null ? null : frames.toJSONString());
+        Object frames = o.get("topFrames");
+        if (frames instanceof JSONArray) {
+            dto.setTopFrames(((JSONArray) frames).toJSONString());
+        } else if (frames != null) {
+            dto.setTopFrames(String.valueOf(frames)); // SDK 老版本/冒烟包可能传纯文本
+        }
         dto.setDeferred(Boolean.TRUE.equals(o.getBoolean("deferred")) ? 1 : 0);
         Long ct = o.getLong("crashTime");
         dto.setCrashTime(ct == null || ct <= 0 ? System.currentTimeMillis() : ct);

@@ -12,7 +12,7 @@ public interface LoganCrashService {
      *
      * @return true=新入库，false=重复（双通道 A/B 撞上）
      */
-    boolean ingest(String envelopeJson);
+    int ingest(String envelopeJson);
 
     LoganCrashDTO getById(long id);
 
