@@ -1,0 +1,25 @@
+pluginManagement {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        mavenLocal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+        mavenLocal()
+    }
+}
+rootProject.name = 'logan-private'
+include ':logan-core'
+include ':logan-crash'
+include ':logan-log-bridge'
+include ':logan-log-bridge-runtime'
+include ':sample:app'

@@ -1,0 +1,39 @@
+{
+  "buildFiles": [
+    "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/src/main/native/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/laolanghuihui/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/Debug/3h42296j/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/laolanghuihui/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/Debug/3h42296j/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "logan::@6890427a1f51a3e7e1df": {
+      "artifactName": "logan",
+      "abi": "x86",
+      "output": "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/build/intermediates/cxx/Debug/3h42296j/obj/x86/liblogan.so",
+      "runtimeFiles": []
+    },
+    "mbedcrypto_mini::@6890427a1f51a3e7e1df": {
+      "artifactName": "mbedcrypto_mini",
+      "abi": "x86",
+      "output": "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/Debug/3h42296j/x86/libmbedcrypto_mini.a",
+      "runtimeFiles": []
+    },
+    "clogan::@6890427a1f51a3e7e1df": {
+      "artifactName": "clogan",
+      "abi": "x86",
+      "output": "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/Debug/3h42296j/x86/libclogan.a",
+      "runtimeFiles": []
+    }
+  }
+}

@@ -1,0 +1,36 @@
+buildscript {
+    repositories {
+        mavenLocal()
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        mavenCentral()
+        google()
+    }
+    dependencies { classpath 'com.ccic.logan:logan-log-bridge:0.1.0' }
+}
+plugins { id 'com.android.application' }
+apply plugin: 'com.ccic.logan.log-bridge'
+
+android {
+    namespace 'test.logan.dianping.com.logan'
+    compileSdk 35
+    defaultConfig {
+        applicationId "test.logan.dianping.com.logan"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+loganLogBridge {
+    enabled = true
+    include 'test.logan.'
+}
+
+dependencies {
+    implementation project(':logan-core')
+    implementation project(':logan-crash')
+    implementation project(':logan-log-bridge-runtime')
+}

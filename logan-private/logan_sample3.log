@@ -1,0 +1,117 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :logan-core
+WARNING: The option setting 'android.aapt2FromMavenOverride=/Users/laolanghuihui/Library/Android/sdk/build-tools/35.0.0/aapt2' is experimental.
+
+> Task :sample:app:preBuild UP-TO-DATE
+> Task :sample:app:preDebugBuild UP-TO-DATE
+> Task :sample:app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :logan-core:preBuild UP-TO-DATE
+> Task :logan-core:preDebugBuild UP-TO-DATE
+> Task :logan-core:generateDebugResValues UP-TO-DATE
+> Task :logan-core:generateDebugResources UP-TO-DATE
+> Task :logan-core:packageDebugResources UP-TO-DATE
+> Task :logan-core:parseDebugLocalResources UP-TO-DATE
+> Task :logan-core:generateDebugRFile UP-TO-DATE
+> Task :logan-core:javaPreCompileDebug UP-TO-DATE
+> Task :logan-core:compileDebugJavaWithJavac UP-TO-DATE
+> Task :logan-core:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :logan-crash:preBuild UP-TO-DATE
+> Task :logan-crash:preDebugBuild UP-TO-DATE
+> Task :logan-crash:generateDebugResValues UP-TO-DATE
+> Task :logan-crash:generateDebugResources UP-TO-DATE
+> Task :logan-crash:packageDebugResources UP-TO-DATE
+> Task :logan-crash:parseDebugLocalResources UP-TO-DATE
+> Task :logan-crash:generateDebugRFile UP-TO-DATE
+> Task :logan-crash:javaPreCompileDebug UP-TO-DATE
+> Task :logan-crash:compileDebugJavaWithJavac UP-TO-DATE
+> Task :logan-crash:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :sample:app:javaPreCompileDebug UP-TO-DATE
+> Task :logan-core:compileDebugLibraryResources UP-TO-DATE
+> Task :logan-crash:compileDebugLibraryResources UP-TO-DATE
+> Task :logan-core:writeDebugAarMetadata UP-TO-DATE
+> Task :logan-crash:writeDebugAarMetadata UP-TO-DATE
+> Task :sample:app:checkDebugAarMetadata UP-TO-DATE
+> Task :sample:app:generateDebugResValues UP-TO-DATE
+> Task :sample:app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :sample:app:generateDebugResources UP-TO-DATE
+> Task :sample:app:mergeDebugResources UP-TO-DATE
+> Task :sample:app:packageDebugResources UP-TO-DATE
+> Task :sample:app:parseDebugLocalResources UP-TO-DATE
+> Task :sample:app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :logan-core:extractDeepLinksDebug UP-TO-DATE
+> Task :logan-core:processDebugManifest UP-TO-DATE
+> Task :logan-crash:extractDeepLinksDebug UP-TO-DATE
+> Task :logan-crash:processDebugManifest UP-TO-DATE
+> Task :sample:app:extractDeepLinksDebug UP-TO-DATE
+> Task :sample:app:processDebugMainManifest UP-TO-DATE
+> Task :sample:app:processDebugManifest UP-TO-DATE
+> Task :sample:app:processDebugManifestForPackage UP-TO-DATE
+> Task :logan-core:mergeDebugShaders UP-TO-DATE
+> Task :logan-core:compileDebugShaders NO-SOURCE
+> Task :logan-core:generateDebugAssets UP-TO-DATE
+> Task :logan-core:mergeDebugAssets UP-TO-DATE
+> Task :logan-crash:mergeDebugShaders UP-TO-DATE
+> Task :logan-crash:compileDebugShaders NO-SOURCE
+> Task :logan-crash:generateDebugAssets UP-TO-DATE
+> Task :logan-crash:mergeDebugAssets UP-TO-DATE
+> Task :sample:app:mergeDebugShaders UP-TO-DATE
+> Task :sample:app:compileDebugShaders NO-SOURCE
+> Task :sample:app:generateDebugAssets UP-TO-DATE
+> Task :sample:app:mergeDebugAssets UP-TO-DATE
+> Task :sample:app:compressDebugAssets UP-TO-DATE
+> Task :logan-crash:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :logan-core:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :sample:app:desugarDebugFileDependencies UP-TO-DATE
+> Task :logan-core:processDebugJavaRes NO-SOURCE
+> Task :logan-crash:processDebugJavaRes NO-SOURCE
+> Task :sample:app:processDebugJavaRes NO-SOURCE
+> Task :sample:app:mergeDebugJavaResource UP-TO-DATE
+> Task :sample:app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :sample:app:mergeExtDexDebug UP-TO-DATE
+> Task :sample:app:mergeLibDexDebug UP-TO-DATE
+
+> Task :logan-core:configureCMakeDebug[arm64-v8a]
+[CXX5304] This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+[CXX5304] This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+
+> Task :logan-core:buildCMakeDebug[arm64-v8a]
+> Task :logan-core:configureCMakeDebug[armeabi-v7a]
+> Task :logan-core:buildCMakeDebug[armeabi-v7a]
+> Task :logan-core:configureCMakeDebug[x86]
+> Task :logan-core:buildCMakeDebug[x86]
+> Task :logan-core:configureCMakeDebug[x86_64]
+> Task :logan-core:buildCMakeDebug[x86_64]
+> Task :logan-core:mergeDebugJniLibFolders UP-TO-DATE
+> Task :logan-core:mergeDebugNativeLibs UP-TO-DATE
+> Task :logan-core:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :logan-crash:mergeDebugJniLibFolders UP-TO-DATE
+> Task :logan-crash:mergeDebugNativeLibs NO-SOURCE
+> Task :logan-crash:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :sample:app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :sample:app:validateSigningDebug UP-TO-DATE
+> Task :sample:app:writeDebugAppMetadata
+> Task :sample:app:writeDebugSigningConfigVersions
+> Task :sample:app:mergeDebugNativeLibs FAILED
+> Task :sample:app:processDebugResources
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':sample:app:mergeDebugNativeLibs'.
+> A failure occurred while executing com.android.build.gradle.internal.tasks.MergeNativeLibsTask$MergeNativeLibsTaskWorkAction
+   > 2 files found with path 'lib/arm64-v8a/liblogan.so' from inputs:
+      - /Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/build/intermediates/library_jni/debug/copyDebugJniLibsProjectOnly/jni/arm64-v8a/liblogan.so
+      - /Users/laolanghuihui/.gradle/caches/8.11.1/transforms/48057eed39ca28db91d710a8cfa38c79/transformed/logan-core-0.1.0/jni/arm64-v8a/liblogan.so
+     If you are using jniLibs and CMake IMPORTED targets, see
+     https://developer.android.com/r/tools/jniLibs-vs-imported-targets
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 4s
+70 actionable tasks: 12 executed, 58 up-to-date

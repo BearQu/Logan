@@ -1,0 +1,3 @@
+-keep class com.ccic.logan.crash.** { *; }
+-keep class xcrash.** { *; }
+-dontwarn xcrash.**

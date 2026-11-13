@@ -1,0 +1,26 @@
+plugins {
+    id 'java-gradle-plugin'
+    id 'maven-publish'
+}
+java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+dependencies {
+    // 与宿主 AGP 同版本加载（宿主 buildscript 已带 gradle-api + asm）
+    compileOnly 'com.android.tools.build:gradle:8.10.0'
+    implementation 'org.ow2.asm:asm:9.6'
+}
+gradlePlugin {
+    plugins {
+        loganLogBridge {
+            id = 'com.ccic.logan.log-bridge'
+            implementationClass = 'com.ccic.logan.bridge.plugin.LoganLogBridgePlugin'
+        }
+    }
+}
+publishing {
+    repositories { maven { url = "${System.getProperty('user.home')}/.m2/repository" } }
+    publications {
+        pluginMaven(MavenPublication) {
+            groupId = 'com.ccic.logan'; artifactId = 'logan-log-bridge'; version = '0.1.0'
+        }
+    }
+}

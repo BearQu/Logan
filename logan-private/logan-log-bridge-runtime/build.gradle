@@ -1,0 +1,19 @@
+plugins { id 'com.android.library' }
+apply plugin: 'maven-publish'
+android {
+    namespace 'com.ccic.logan.bridge'
+    compileSdk 35
+    defaultConfig { minSdk 21 }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    publishing { singleVariant('release') { withSourcesJar() } }
+}
+dependencies { api project(':logan-core') }
+afterEvaluate {
+    publishing {
+        publications { release(MavenPublication) {
+            from components.release
+            groupId = 'com.ccic.logan'; artifactId = 'logan-log-bridge-runtime'; version = '0.1.0'
+        } }
+        repositories { maven { url = "${System.getProperty('user.home')}/.m2/repository" } }
+    }
+}

@@ -1,0 +1,2 @@
+-keep class com.dianping.logan.** { *; }
+-keep class com.ccic.logan.** { *; }

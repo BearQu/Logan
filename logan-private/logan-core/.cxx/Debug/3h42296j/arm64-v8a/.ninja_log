@@ -1,0 +1,19 @@
+# ninja log v5
+1	55	1794560539857442124	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/aesni.c.o	7c9dcc8917fcb1f3
+1	56	1794560539857122623	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/padlock.c.o	732d9d6787aa38f2
+1	64	1794560539866118383	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/platform.c.o	cfb6da0080d838cc
+6	80	1794560539881488722	CMakeFiles/clogan.dir/Clogan/json_util.c.o	8e5c8303c0834951
+7	80	1794560539881898558	CMakeFiles/clogan.dir/Clogan/aes_util.c.o	9249ab8af53f87b6
+2	82	1794560539885134951	CMakeFiles/clogan.dir/Clogan/mmap_util.c.o	3a782f87cdd31a32
+2	82	1794560539885112951	CMakeFiles/clogan.dir/Clogan/construct_data.c.o	67449b0dcd2d495b
+3	86	1794560539888205511	CMakeFiles/clogan.dir/Clogan/zlib_util.c.o	a85d5b67badc28a5
+7	87	1794560539888333595	CMakeFiles/clogan.dir/Clogan/directory_util.c.o	fe66f784b2522c3a
+2	96	1794560539898623571	CMakeFiles/clogan.dir/Clogan/clogan_core.c.o	4e821b4ae1d4ef0d
+0	101	1794560539903944476	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/aes.c.o	b2841a380b2d0872
+57	101	1794560539904048935	CMakeFiles/clogan.dir/Clogan/console_util.c.o	69d6c63485fd8675
+55	104	1794560539907470288	CMakeFiles/clogan.dir/Clogan/base_util.c.o	2c61074599c48630
+64	109	1794560539912627401	CMakeFiles/logan.dir/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/src/main/jni/clogan_protocol.c.o	b66df10fa7989f9d
+4	109	1794560539911954731	CMakeFiles/clogan.dir/Clogan/cJSON.c.o	36cb471eec014e47
+101	150	1794560539954446000	libmbedcrypto_mini.a	2a28127d38587160
+150	179	1794560539984146000	libclogan.a	a697150723e900cd
+179	209	1794560540012070226	/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/build/intermediates/cxx/Debug/3h42296j/obj/arm64-v8a/liblogan.so	1193e976fa591086

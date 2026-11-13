@@ -1,0 +1,43 @@
+plugins { id 'com.android.library' }
+apply plugin: 'maven-publish'
+
+android {
+    namespace 'com.dianping.logan'
+    compileSdk 35
+    ndkVersion '27.1.12297006'
+
+    defaultConfig {
+        minSdk 21
+        consumerProguardFiles 'consumer-rules.pro'
+        externalNativeBuild {
+            cmake { arguments '-DANDROID_STL=none'; cFlags '-std=c11', '-fvisibility=hidden' }
+        }
+    }
+    externalNativeBuild { cmake { path 'src/main/native/CMakeLists.txt'; version '3.22.1' } }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    publishing {
+        singleVariant('release') { withSourcesJar() }
+    }
+    packagingOptions { jniLibs { useLegacyPackaging = false } }
+}
+
+dependencies {
+    // 零第三方依赖：核心只有官方 Java + 我们的 native
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                groupId = 'com.ccic.logan'
+                artifactId = 'logan-core'
+                version = '0.1.0'
+            }
+        }
+        repositories { maven { url = "${System.getProperty('user.home')}/.m2/repository" } }
+    }
+}

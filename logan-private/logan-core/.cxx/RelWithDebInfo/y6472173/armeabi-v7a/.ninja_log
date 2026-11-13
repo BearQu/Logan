@@ -1,0 +1,21 @@
+# ninja log v5
+258	292	1794559213215177790	/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/build/intermediates/cxx/RelWithDebInfo/y6472173/obj/armeabi-v7a/liblogan.so	5637edcbdf6be45a
+1	224	1794559213147989575	CMakeFiles/clogan.dir/Clogan/cJSON.c.o	e17431bc29ff0c6f
+156	191	1794559213115917000	libmbedcrypto_mini.a	f378024c1b17689
+224	258	1794559213183214000	libclogan.a	a697150723e900cd
+0	156	1794559213079150853	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/aes.c.o	5fcc6611764c5674
+71	114	1794559213036586263	CMakeFiles/logan.dir/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/src/main/jni/clogan_protocol.c.o	22675e760395e363
+67	101	1794559213025051122	CMakeFiles/clogan.dir/Clogan/console_util.c.o	43abd0a75bd0ce3e
+1	79	1794559212999741453	CMakeFiles/clogan.dir/Clogan/zlib_util.c.o	acceed7912cd3467
+1	77	1794559213000090538	CMakeFiles/clogan.dir/Clogan/mmap_util.c.o	7310a26d5038f340
+1	73	1794559212995525681	CMakeFiles/clogan.dir/Clogan/json_util.c.o	4d341b6c80c32eef
+1	71	1794559212990077737	CMakeFiles/clogan.dir/Clogan/construct_data.c.o	86f6f0d29ba93178
+3	72	1794559212991941663	CMakeFiles/clogan.dir/Clogan/base_util.c.o	425b042f4d613bd
+3	73	1794559212995434556	CMakeFiles/clogan.dir/Clogan/directory_util.c.o	174c4183443e5dca
+0	124	1794559213046371855	CMakeFiles/clogan.dir/Clogan/clogan_core.c.o	6719cde01b7bc51f
+2	71	1794559212992345624	CMakeFiles/clogan.dir/Clogan/aes_util.c.o	3eb00d7aa67b4404
+0	70	1794559212982989993	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/platform.c.o	e7c2b32d174c7c74
+0	64	1794559212982911118	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/aesni.c.o	c3e4c9adb3f29287
+0	24	1794559495248149739	CMakeFiles/mbedcrypto_mini.dir/mbedtls/library/padlock.c.o	713b47d08ba31d40
+24	56	1794559495280371000	libmbedcrypto_mini.a	2a28127d38587160
+56	92	1794559495314876576	/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/build/intermediates/cxx/RelWithDebInfo/y6472173/obj/armeabi-v7a/liblogan.so	5637edcbdf6be45a

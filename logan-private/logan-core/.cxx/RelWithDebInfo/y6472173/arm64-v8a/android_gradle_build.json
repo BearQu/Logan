@@ -1,0 +1,50 @@
+{
+  "buildFiles": [
+    "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/src/main/native/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/laolanghuihui/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/RelWithDebInfo/y6472173/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/laolanghuihui/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/RelWithDebInfo/y6472173/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "clogan::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "clogan",
+      "output": "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/RelWithDebInfo/y6472173/arm64-v8a/libclogan.a"
+    },
+    "logan::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "logan",
+      "output": "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/build/intermediates/cxx/RelWithDebInfo/y6472173/obj/arm64-v8a/liblogan.so",
+      "runtimeFiles": []
+    },
+    "mbedcrypto_mini::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "mbedcrypto_mini",
+      "output": "/Users/laolanghuihui/Desktop/MyProject/Logan/logan-private/logan-core/.cxx/RelWithDebInfo/y6472173/arm64-v8a/libmbedcrypto_mini.a"
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/laolanghuihui/Library/Android/sdk/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/laolanghuihui/Library/Android/sdk/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": []
+}

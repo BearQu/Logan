@@ -1,0 +1,34 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "test.logan.dianping.com.logan"
+
+    compileSdk 34
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    androidTestImplementation('androidx.test.espresso:espresso-core:3.5.1', {
+        exclude group: 'androidx.test', module: 'test-annotations'
+    })
+    testImplementation 'junit:junit:4.12'
+    implementation project(':logan')
+//    compile 'com.dianping.android.sdk:logan:1.1.0'
+//    releaseCompile project(path: ':logan', configuration: 'release')
+//    debugCompile project(path: ':logan', configuration: 'debug')
+}
