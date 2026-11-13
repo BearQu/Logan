@@ -2,3 +2,6 @@ build/
 .gradle/
 local.properties
 *_verify/
+.cxx/
+*.o
+*.so.d
