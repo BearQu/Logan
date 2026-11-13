@@ -1,26 +1,23 @@
-# 参考: https://developer.aliyun.com/article/65274
-FROM registry.cn-hangzhou.aliyuncs.com/acs/maven:3-jdk-8 AS build-env
-
-ENV MY_HOME=/app
-RUN mkdir -p $MY_HOME
-WORKDIR $MY_HOME
-ADD pom.xml $MY_HOME
-
-# get all the downloads out of the way
-RUN ["/usr/local/bin/mvn-entrypoint.sh","mvn","verify","clean","--fail-never"]
-
-# add source
-ADD . $MY_HOME
-
-# run maven verify
-RUN ["/usr/local/bin/mvn-entrypoint.sh","mvn","verify"]
-
-# Second stage - build image
-FROM tomcat:7.0.61-jre8
-
+FROM maven:3.9-eclipse-temurin-8 AS build-env
+WORKDIR /app
+COPY mvn/settings.xml /root/.m2/settings.xml
+COPY pom.xml /app/
+RUN mvn -B -q dependency:go-offline || true
+COPY . /app/
+# PoC env 兜底：compose 可用 LOGAN_DB_* 覆盖；防止占位符模板打进 WAR
+ARG LOGAN_DB_HOST=db
+ARG LOGAN_DB_PORT=3306
+ARG LOGAN_DB_NAME=logan
+ARG LOGAN_DB_USER=logan
+ARG LOGAN_DB_PASSWORD=logan_poc_2026
+RUN sed -i \
+  -e "s#//host:port/database#//${LOGAN_DB_HOST}:${LOGAN_DB_PORT}/${LOGAN_DB_NAME}#" \
+  -e "s#^jdbc.username=.*#jdbc.username=${LOGAN_DB_USER}#" \
+  -e "s#^jdbc.password=.*#jdbc.password=${LOGAN_DB_PASSWORD}#" \
+  src/main/resources/db.properties \
+ && cat src/main/resources/db.properties
+RUN mvn -B verify -DskipTests
+FROM tomcat:9-jre8
 COPY --from=build-env /app/target/*.war /usr/local/tomcat/webapps/logan-web.war
-
-ENV JAVA_OPTS=""
-ENV SERVER_PORT 8080
-
-EXPOSE ${SERVER_PORT}
+ENV JAVA_OPTS="-Xms128m -Xmx384m"
+EXPOSE 8080
