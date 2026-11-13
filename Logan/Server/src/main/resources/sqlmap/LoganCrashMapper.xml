@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganCrashMapper">
+    <resultMap id="crashMap" type="com.meituan.logan.web.dto.LoganCrashDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="platform" jdbcType="INTEGER" property="platform"/>
+        <result column="kind" jdbcType="VARCHAR" property="kind"/>
+        <result column="fingerprint" jdbcType="VARCHAR" property="fingerprint"/>
+        <result column="device_id" jdbcType="VARCHAR" property="deviceId"/>
+        <result column="union_id" jdbcType="VARCHAR" property="unionId"/>
+        <result column="user_id" jdbcType="VARCHAR" property="userId"/>
+        <result column="app_version" jdbcType="VARCHAR" property="appVersion"/>
+        <result column="build_version" jdbcType="VARCHAR" property="buildVersion"/>
+        <result column="brand" jdbcType="VARCHAR" property="brand"/>
+        <result column="model" jdbcType="VARCHAR" property="model"/>
+        <result column="manufacturer" jdbcType="VARCHAR" property="manufacturer"/>
+        <result column="sdk_int" jdbcType="INTEGER" property="sdkInt"/>
+        <result column="release_ver" jdbcType="VARCHAR" property="releaseVer"/>
+        <result column="abi" jdbcType="VARCHAR" property="abi"/>
+        <result column="signal_info" jdbcType="VARCHAR" property="signalInfo"/>
+        <result column="top_frames" jdbcType="VARCHAR" property="topFrames"/>
+        <result column="deferred" jdbcType="INTEGER" property="deferred"/>
+        <result column="crash_time" jdbcType="BIGINT" property="crashTime"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+        <result column="content" jdbcType="LONGVARCHAR" property="content"/>
+        <result column="content_hash" jdbcType="CHAR" property="contentHash"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+    </resultMap>
+
+    <resultMap id="issueMap" type="com.meituan.logan.web.dto.LoganCrashIssueDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="platform" jdbcType="INTEGER" property="platform"/>
+        <result column="kind" jdbcType="VARCHAR" property="kind"/>
+        <result column="fingerprint" jdbcType="VARCHAR" property="fingerprint"/>
+        <result column="sample_content" jdbcType="LONGVARCHAR" property="sampleContent"/>
+        <result column="top_frames" jdbcType="VARCHAR" property="topFrames"/>
+        <result column="signal_info" jdbcType="VARCHAR" property="signalInfo"/>
+        <result column="first_crash_time" jdbcType="BIGINT" property="firstCrashTime"/>
+        <result column="last_crash_time" jdbcType="BIGINT" property="lastCrashTime"/>
+        <result column="crash_count" jdbcType="INTEGER" property="crashCount"/>
+        <result column="affected_devices" jdbcType="VARCHAR" property="affectedDevices"/>
+        <result column="llm_summary" jdbcType="LONGVARCHAR" property="llmSummary"/>
+        <result column="llm_severity" jdbcType="VARCHAR" property="llmSeverity"/>
+        <result column="status" jdbcType="INTEGER" property="status"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insertIgnore" parameterType="map" useGeneratedKeys="true" keyColumn="id" keyProperty="id">
+        INSERT IGNORE INTO logan_crash
+        (app_id,platform,kind,fingerprint,device_id,union_id,user_id,app_version,build_version,
+         brand,model,manufacturer,sdk_int,release_ver,abi,signal_info,top_frames,deferred,
+         crash_time,add_time,content,content_hash)
+        VALUES (#{dto.appId},#{dto.platform},#{dto.kind},#{dto.fingerprint},#{dto.deviceId},#{dto.unionId},
+         #{dto.userId},#{dto.appVersion},#{dto.buildVersion},#{dto.brand},#{dto.model},#{dto.manufacturer},
+         #{dto.sdkInt},#{dto.releaseVer},#{dto.abi},#{dto.signalInfo},#{dto.topFrames},#{dto.deferred},
+         #{dto.crashTime},#{dto.addTime},#{dto.content},#{dto.contentHash})
+    </insert>
+
+    <select id="selectById" parameterType="java.lang.Long" resultMap="crashMap">
+        SELECT * FROM logan_crash WHERE id=#{id}
+    </select>
+
+    <select id="queryByFingerprint" parameterType="map" resultMap="crashMap">
+        SELECT * FROM logan_crash WHERE app_id=#{appId} AND fingerprint=#{fingerprint}
+        ORDER BY crash_time DESC LIMIT #{limit}
+    </select>
+
+    <select id="queryByDevice" parameterType="map" resultMap="crashMap">
+        SELECT * FROM logan_crash WHERE device_id=#{deviceId} ORDER BY crash_time DESC LIMIT #{limit}
+    </select>
+
+    <select id="queryLatest" parameterType="map" resultMap="crashMap">
+        SELECT * FROM logan_crash
+        <where>
+            <if test="appId != null and appId != ''">app_id=#{appId}</if>
+        </where>
+        ORDER BY crash_time DESC LIMIT #{limit}
+    </select>
+
+    <select id="countByFingerprint" parameterType="map" resultType="int">
+        SELECT COUNT(*) FROM logan_crash WHERE app_id=#{appId} AND fingerprint=#{fingerprint}
+    </select>
+
+    <select id="countAll" parameterType="map" resultType="int">
+        SELECT COUNT(*) FROM logan_crash
+        <where>
+            <if test="appId != null and appId != ''">app_id=#{appId}</if>
+        </where>
+    </select>
+
+    <select id="selectIssueByFp" parameterType="map" resultMap="issueMap">
+        SELECT * FROM logan_crash_issue WHERE app_id=#{appId} AND fingerprint=#{fingerprint}
+    </select>
+
+    <insert id="insertIssue" parameterType="map" useGeneratedKeys="true" keyColumn="id" keyProperty="id">
+        INSERT IGNORE INTO logan_crash_issue
+        (app_id,platform,kind,fingerprint,sample_content,top_frames,signal_info,
+         first_crash_time,last_crash_time,crash_count,affected_devices,status,add_time)
+        VALUES (#{dto.appId},#{dto.platform},#{dto.kind},#{dto.fingerprint},#{dto.sampleContent},
+         #{dto.topFrames},#{dto.signalInfo},#{dto.firstCrashTime},#{dto.lastCrashTime},#{dto.crashCount},
+         #{dto.affectedDevices},0,#{dto.addTime})
+    </insert>
+
+    <update id="updateIssueAgg" parameterType="map">
+        UPDATE logan_crash_issue
+        SET crash_count=#{crashCount}, last_crash_time=#{lastCrashTime}, affected_devices=#{affectedDevices}
+        WHERE id=#{id}
+    </update>
+
+    <update id="updateLlmResult" parameterType="map">
+        UPDATE logan_crash_issue SET llm_summary=#{llmSummary}, llm_severity=#{llmSeverity} WHERE id=#{id}
+    </update>
+
+    <select id="queryRecentIssues" parameterType="map" resultMap="issueMap">
+        SELECT * FROM logan_crash_issue
+        <where>
+            <if test="appId != null and appId != ''">app_id=#{appId}</if>
+        </where>
+        ORDER BY last_crash_time DESC LIMIT #{limit}
+    </select>
+
+    <select id="queryIssuesWithoutSummary" parameterType="map" resultMap="issueMap">
+        SELECT * FROM logan_crash_issue
+        WHERE llm_summary IS NULL AND crash_count &gt;= 1
+        ORDER BY last_crash_time DESC LIMIT #{limit}
+    </select>
+</mapper>

@@ -5,3 +5,7 @@ local.properties
 .cxx/
 *.o
 *.so.d
+.hvigor/
+oh_modules/
+*.log
+.build/

@@ -13,7 +13,7 @@ import java.util.List;
  * @since logan-web 1.0
  */
 public enum LogTypeEnum {
-    UNKNOWN(0, "unknown"), ONE(1, "日志类型1"), TWO(2, "日志类型2"), THREE(3, "日志类型3");
+    UNKNOWN(0, "unknown"), ONE(1, "日志类型1"), TWO(2, "日志类型2"), THREE(3, "日志类型3"), CRASH(99, "崩溃日志");
 
     @Getter
     private int logType;

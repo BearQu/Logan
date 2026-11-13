@@ -23,6 +23,8 @@ public class HandlerDispatcherDefaultImpl implements HandlerDispatcher {
     private LoganTypeThreeHandler threeHandler;
     @Resource
     private LoganTypeUnknownHandler unknownHandler;
+    @Resource
+    private LoganCrashHandler crashHandler;
 
     @PostConstruct
     public void init() {
@@ -30,6 +32,7 @@ public class HandlerDispatcherDefaultImpl implements HandlerDispatcher {
         handlers.put(LogTypeEnum.TWO, twoHandler);
         handlers.put(LogTypeEnum.THREE, threeHandler);
         handlers.put(LogTypeEnum.UNKNOWN, unknownHandler);
+        handlers.put(LogTypeEnum.CRASH, crashHandler);
     }
 
     @Override

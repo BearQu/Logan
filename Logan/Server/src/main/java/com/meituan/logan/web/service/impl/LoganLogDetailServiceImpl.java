@@ -12,6 +12,7 @@ import com.meituan.logan.web.model.LoganLogDetailModel;
 import com.meituan.logan.web.model.LoganLogItem;
 import com.meituan.logan.web.model.LoganLogSimpleModel;
 import com.meituan.logan.web.service.HandlerDispatcher;
+import com.meituan.logan.web.service.LoganCrashService;
 import com.meituan.logan.web.service.LoganLogDetailService;
 import com.meituan.logan.web.util.FileUtil;
 import com.meituan.logan.web.util.OrderUtil;
@@ -45,6 +46,8 @@ public class LoganLogDetailServiceImpl extends AbstractBatchInsertService<LoganL
     private LoganTaskMapper taskMapper;
     @Resource
     private HandlerDispatcher handlerDispatcher;
+    @Resource
+    private LoganCrashService crashService;
 
     @Override
     @Transactional
@@ -147,6 +150,17 @@ public class LoganLogDetailServiceImpl extends AbstractBatchInsertService<LoganL
             detailMapper.batchInsert(list);
         } catch (Exception e) {
             LOGGER.error(e);
+            return;
+        }
+        // 通道 B 钩子：冷启动补传的 type=99 崩溃行走同一崩溃服务；content_hash 与通道 A 天然去重
+        for (LoganLogDetailDTO dto : list) {
+            if (dto.getLogType() == LogTypeEnum.CRASH.getLogType()) {
+                try {
+                    crashService.ingest(dto.getContent());
+                } catch (Exception e) {
+                    LOGGER.error("crash row ingest failed, detailId=" + dto.getId() + ": " + e.getMessage());
+                }
+            }
         }
     }
 }
