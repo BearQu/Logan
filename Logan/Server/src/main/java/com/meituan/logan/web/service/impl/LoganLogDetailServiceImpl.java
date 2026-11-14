@@ -70,6 +70,28 @@ public class LoganLogDetailServiceImpl extends AbstractBatchInsertService<LoganL
         }
     }
 
+    /** 解析很轻量（读文件+批量插入），单线程串行即可；守护线程不阻止容器关闭。 */
+    private static final java.util.concurrent.ExecutorService ANALYZE_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "logan-log-analyze");
+                t.setDaemon(true);
+                return t;
+            });
+
+    @Override
+    public void analyzeTaskAsync(final long taskId) {
+        ANALYZE_EXECUTOR.execute(() -> {
+            try {
+                LoganTaskDTO task = taskMapper.selectById(taskId);
+                if (task != null) {
+                    tryAnalyze(task);
+                }
+            } catch (Exception e) {
+                LOGGER.error("analyzeTaskAsync failed, taskId=" + taskId, e);
+            }
+        });
+    }
+
     private void tryAnalyze(LoganTaskDTO task) {
         if (TaskStatusEnum.NORMAL.getStatus() == task.getStatus()) {
             String key = task.getLogFileName();

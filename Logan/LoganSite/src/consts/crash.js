@@ -4,6 +4,11 @@ export const KIND_META = {
   java: { label: "Java", color: "#2f54eb" },
   native: { label: "Native", color: "#fa541c" },
   anr: { label: "ANR", color: "#faad14" },
+  nsexception: { label: "OC异常", color: "#eb2f96" },
+  mach: { label: "Mach", color: "#a0d911" },
+  jscrash: { label: "JS崩溃", color: "#13c2c2" },
+  cppcrash: { label: "CPP崩溃", color: "#fa541c" },
+  freeze: { label: "冻屏", color: "#faad14" },
 };
 
 export const SEVERITY_META = {

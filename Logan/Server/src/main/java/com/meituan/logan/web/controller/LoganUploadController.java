@@ -35,6 +35,8 @@ public class LoganUploadController {
     private LoganLogFileService fileService;
     @Resource
     private com.meituan.logan.web.service.LoganAppService appService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.meituan.logan.web.service.LoganLogDetailService detailService;
 
     /**
      * 一次上报一个任务一天日志
@@ -50,9 +52,15 @@ public class LoganUploadController {
         if (ResultEnum.SUCCESS != result) {
             return LoganResponse.exception(result.name());
         }
-        return taskService.insertTask(model) > 0 ?
-                LoganResponse.success(FileUtil.getDownloadUrl(request, model.getLogFileName()))
-                : LoganResponse.exception(ResultEnum.ERROR_DATABASE.name());
+        long taskId = taskService.insertTask(model);
+        if (taskId <= 0) {
+            return LoganResponse.exception(ResultEnum.ERROR_DATABASE.name());
+        }
+        // 入库即异步解析：崩溃↔日志互证与 AI 摘要依赖明细已入库，不等人工打开任务页
+        if (detailService != null) {
+            detailService.analyzeTaskAsync(taskId);
+        }
+        return LoganResponse.success(FileUtil.getDownloadUrl(request, model.getLogFileName()));
 
     }
 }
