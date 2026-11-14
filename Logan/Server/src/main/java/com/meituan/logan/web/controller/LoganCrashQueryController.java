@@ -66,6 +66,130 @@ public class LoganCrashQueryController {
         }
     }
 
+    /**
+     * 崩溃明细综合搜索：机型/品牌/设备码/unionId/版本/类型/时间范围/关键词，分页返回（不含堆栈正文）。
+     * 时间参数为毫秒时间戳（beginTime/endTime）。
+     */
+    @GetMapping("/search.json")
+    @ResponseBody
+    public LoganResponse<Map<String, Object>> searchCrashes(
+            @RequestParam(required = false) String appId,
+            @RequestParam(required = false) String kind,
+            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) String model,
+            @RequestParam(required = false) String deviceId,
+            @RequestParam(required = false) String unionId,
+            @RequestParam(required = false) String appVersion,
+            @RequestParam(required = false) String buildVersion,
+            @RequestParam(required = false) String beginTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer offset,
+            @RequestParam(required = false) Integer limit) {
+        try {
+            Map<String, Object> q = buildFilter(appId, kind, brand, model, deviceId, unionId,
+                    appVersion, buildVersion, beginTime, endTime, keyword, null, null);
+            int off = offset == null || offset < 0 ? 0 : offset;
+            int n = limit == null || limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, 200);
+            q.put("offset", off);
+            q.put("limit", n);
+            Map<String, Object> data = new HashMap<>();
+            data.put("total", crashMapper.countSearchCrashes(q));
+            data.put("list", crashMapper.searchCrashes(q));
+            return LoganResponse.success(data);
+        } catch (Exception e) {
+            return LoganResponse.exception(e.getMessage());
+        }
+    }
+
+    /**
+     * 聚合问题综合搜索：明细条件（机型/设备码/时间…）命中指纹后返回问题，
+     * 次数/设备数按筛选范围重算（filteredCrashCount/filteredDevices）；可叠加问题侧条件（状态/摘要关键词）。
+     */
+    @GetMapping("/issues/search.json")
+    @ResponseBody
+    public LoganResponse<Map<String, Object>> searchIssues(
+            @RequestParam(required = false) String appId,
+            @RequestParam(required = false) String kind,
+            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) String model,
+            @RequestParam(required = false) String deviceId,
+            @RequestParam(required = false) String unionId,
+            @RequestParam(required = false) String appVersion,
+            @RequestParam(required = false) String buildVersion,
+            @RequestParam(required = false) String beginTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String issueKeyword,
+            @RequestParam(required = false) Integer offset,
+            @RequestParam(required = false) Integer limit) {
+        try {
+            Map<String, Object> q = buildFilter(appId, kind, brand, model, deviceId, unionId,
+                    appVersion, buildVersion, beginTime, endTime, keyword, status, issueKeyword);
+            int off = offset == null || offset < 0 ? 0 : offset;
+            int n = limit == null || limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, 100);
+            q.put("offset", off);
+            q.put("limit", n);
+            Map<String, Object> data = new HashMap<>();
+            data.put("total", crashMapper.countSearchIssues(q));
+            data.put("list", crashMapper.searchIssues(q));
+            return LoganResponse.success(data);
+        } catch (Exception e) {
+            return LoganResponse.exception(e.getMessage());
+        }
+    }
+
+    /** 筛选候选值：该 app 出现过的版本与机型，供前端下拉。 */
+    @GetMapping("/filters/values.json")
+    @ResponseBody
+    public LoganResponse<Map<String, Object>> filterValues(String appId) {
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("appVersions", crashMapper.listAppVersions(appId));
+            data.put("devices", crashMapper.listDevices(appId));
+            return LoganResponse.success(data);
+        } catch (Exception e) {
+            return LoganResponse.exception(e.getMessage());
+        }
+    }
+
+    private static Map<String, Object> buildFilter(String appId, String kind, String brand, String model,
+                                                   String deviceId, String unionId, String appVersion,
+                                                   String buildVersion, String beginTime, String endTime,
+                                                   String keyword, Integer status, String issueKeyword) {
+        Map<String, Object> q = new HashMap<>();
+        if (StringUtils.isNotBlank(appId)) q.put("appId", appId.trim());
+        if (StringUtils.isNotBlank(kind)) q.put("kind", kind.trim());
+        if (StringUtils.isNotBlank(brand)) q.put("brand", brand.trim());
+        if (StringUtils.isNotBlank(model)) q.put("model", model.trim());
+        if (StringUtils.isNotBlank(deviceId)) q.put("deviceId", deviceId.trim());
+        if (StringUtils.isNotBlank(unionId)) q.put("unionId", unionId.trim());
+        if (StringUtils.isNotBlank(appVersion)) q.put("appVersion", appVersion.trim());
+        if (StringUtils.isNotBlank(buildVersion)) q.put("buildVersion", buildVersion.trim());
+        if (StringUtils.isNotBlank(keyword)) q.put("keyword", keyword.trim());
+        Long bt = parseTime(beginTime);
+        if (bt != null) q.put("beginTime", bt);
+        Long et = parseTime(endTime);
+        if (et != null) q.put("endTime", et);
+        if (status != null) q.put("status", status);
+        if (StringUtils.isNotBlank(issueKeyword)) q.put("issueKeyword", issueKeyword.trim());
+        return q;
+    }
+
+    /** 毫秒时间戳或 yyyy-MM-dd / yyyy-MM-dd HH:mm:ss 都接受。 */
+    private static Long parseTime(String v) {
+        if (StringUtils.isBlank(v)) return null;
+        String t = v.trim();
+        try {
+            if (t.matches("\\d{12,14}")) return Long.parseLong(t);
+            String norm = t.length() == 10 ? t + " 00:00:00" : t;
+            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(norm).getTime();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** KPI 概览：总数/影响设备/未处理数，按 kind 细分。 */
     @GetMapping("/stats.json")
     @ResponseBody

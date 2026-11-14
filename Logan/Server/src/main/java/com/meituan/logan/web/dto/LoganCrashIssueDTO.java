@@ -39,6 +39,12 @@ public class LoganCrashIssueDTO {
 
     private String llmSeverity;
 
+    /** 综合搜索时，命中筛选条件的崩溃次数（未筛选时等于 crashCount） */
+    private Integer filteredCrashCount;
+
+    /** 综合搜索时，命中筛选条件的设备数 */
+    private Integer filteredDevices;
+
     /** 0 未处理 1 处理中 2 已修复 3 忽略 */
     private int status;
 

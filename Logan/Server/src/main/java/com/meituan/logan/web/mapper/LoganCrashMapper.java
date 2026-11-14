@@ -53,6 +53,22 @@ public interface LoganCrashMapper {
     /** KPI 汇总：[{kind, total, issues, devices, lastCrashTime}]。 */
     List<java.util.Map<String, Object>> queryKindSummary(@Param("appId") String appId);
 
+    /** 综合搜索：按机型/设备码/版本/时间/关键词过滤崩溃明细（分页，不含 content）。 */
+    List<LoganCrashDTO> searchCrashes(@Param("q") java.util.Map<String, Object> q);
+
+    int countSearchCrashes(@Param("q") java.util.Map<String, Object> q);
+
+    /** 综合搜索：明细条件命中指纹后返回聚合问题，并带筛选范围内的次数/设备数。 */
+    List<LoganCrashIssueDTO> searchIssues(@Param("q") java.util.Map<String, Object> q);
+
+    int countSearchIssues(@Param("q") java.util.Map<String, Object> q);
+
+    /** 条件涉及的版本候选（筛选下拉用）。 */
+    List<String> listAppVersions(@Param("appId") String appId);
+
+    /** 条件涉及的机型候选（筛选下拉用）。 */
+    List<java.util.Map<String, Object>> listDevices(@Param("appId") String appId);
+
     /** 实例列表（不含 content 大字段，列表页用）。 */
     List<com.meituan.logan.web.dto.LoganCrashDTO> queryInstancesByFp(@Param("appId") String appId, @Param("fingerprint") String fingerprint, @Param("limit") int limit);
 }

@@ -168,4 +168,109 @@
         WHERE app_id=#{appId} AND fingerprint=#{fingerprint}
         ORDER BY crash_time DESC LIMIT #{limit}
     </select>
+
+    <!-- ========== 综合搜索（机型/设备码/时间等） ========== -->
+
+    <sql id="crashFilterWhere">
+        <if test="q.appId != null and q.appId != ''">AND c.app_id=#{q.appId}</if>
+        <if test="q.kind != null and q.kind != ''">AND c.kind=#{q.kind}</if>
+        <if test="q.brand != null and q.brand != ''">AND c.brand LIKE CONCAT('%',#{q.brand},'%')</if>
+        <if test="q.model != null and q.model != ''">AND c.model LIKE CONCAT('%',#{q.model},'%')</if>
+        <if test="q.deviceId != null and q.deviceId != ''">AND c.device_id LIKE CONCAT('%',#{q.deviceId},'%')</if>
+        <if test="q.unionId != null and q.unionId != ''">AND c.union_id LIKE CONCAT('%',#{q.unionId},'%')</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND c.app_version=#{q.appVersion}</if>
+        <if test="q.buildVersion != null and q.buildVersion != ''">AND c.build_version=#{q.buildVersion}</if>
+        <if test="q.beginTime != null">AND c.crash_time &gt;= #{q.beginTime}</if>
+        <if test="q.endTime != null">AND c.crash_time &lt;= #{q.endTime}</if>
+        <if test="q.keyword != null and q.keyword != ''">AND (c.content LIKE CONCAT('%',#{q.keyword},'%') OR c.signal_info LIKE CONCAT('%',#{q.keyword},'%') OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))</if>
+    </sql>
+
+    <sql id="issueFilterWhere">
+        <if test="q.appId != null and q.appId != ''">AND i.app_id=#{q.appId}</if>
+        <if test="q.kind != null and q.kind != ''">AND i.kind=#{q.kind}</if>
+        <if test="q.status != null">AND i.status=#{q.status}</if>
+        <if test="q.issueKeyword != null and q.issueKeyword != ''">AND (i.llm_summary LIKE CONCAT('%',#{q.issueKeyword},'%') OR i.signal_info LIKE CONCAT('%',#{q.issueKeyword},'%') OR i.fingerprint LIKE CONCAT('%',#{q.issueKeyword},'%'))</if>
+    </sql>
+
+    <select id="searchCrashes" parameterType="map" resultMap="crashNoContentMap">
+        SELECT c.id, c.app_id, c.platform, c.kind, c.fingerprint, c.device_id, c.union_id, c.user_id,
+               c.app_version, c.build_version, c.brand, c.model, c.manufacturer, c.sdk_int, c.release_ver,
+               c.abi, c.signal_info, c.top_frames, c.deferred, c.crash_time, c.add_time, c.content_hash
+        FROM logan_crash c
+        <where><include refid="crashFilterWhere"/></where>
+        ORDER BY c.crash_time DESC
+        LIMIT #{q.offset}, #{q.limit}
+    </select>
+
+    <select id="countSearchCrashes" parameterType="map" resultType="int">
+        SELECT COUNT(*) FROM logan_crash c
+        <where><include refid="crashFilterWhere"/></where>
+    </select>
+
+    <resultMap id="issueSearchMap" type="com.meituan.logan.web.dto.LoganCrashIssueDTO" extends="issueMap">
+        <result column="filtered_crash_count" jdbcType="INTEGER" property="filteredCrashCount"/>
+        <result column="filtered_devices" jdbcType="INTEGER" property="filteredDevices"/>
+    </resultMap>
+
+    <select id="searchIssues" parameterType="map" resultMap="issueSearchMap">
+        SELECT i.*,
+               (SELECT COUNT(*) FROM logan_crash c
+                 WHERE c.app_id=i.app_id AND c.fingerprint=i.fingerprint
+                 <if test="q.kind != null and q.kind != ''">AND c.kind=#{q.kind}</if>
+                 <if test="q.brand != null and q.brand != ''">AND c.brand LIKE CONCAT('%',#{q.brand},'%')</if>
+                 <if test="q.model != null and q.model != ''">AND c.model LIKE CONCAT('%',#{q.model},'%')</if>
+                 <if test="q.deviceId != null and q.deviceId != ''">AND c.device_id LIKE CONCAT('%',#{q.deviceId},'%')</if>
+                 <if test="q.unionId != null and q.unionId != ''">AND c.union_id LIKE CONCAT('%',#{q.unionId},'%')</if>
+                 <if test="q.appVersion != null and q.appVersion != ''">AND c.app_version=#{q.appVersion}</if>
+                 <if test="q.buildVersion != null and q.buildVersion != ''">AND c.build_version=#{q.buildVersion}</if>
+                 <if test="q.beginTime != null">AND c.crash_time &gt;= #{q.beginTime}</if>
+                 <if test="q.endTime != null">AND c.crash_time &lt;= #{q.endTime}</if>
+                 <if test="q.keyword != null and q.keyword != ''">AND (c.content LIKE CONCAT('%',#{q.keyword},'%') OR c.signal_info LIKE CONCAT('%',#{q.keyword},'%') OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))</if>
+               ) AS filtered_crash_count,
+               (SELECT COUNT(DISTINCT c.device_id) FROM logan_crash c
+                 WHERE c.app_id=i.app_id AND c.fingerprint=i.fingerprint
+                 <if test="q.brand != null and q.brand != ''">AND c.brand LIKE CONCAT('%',#{q.brand},'%')</if>
+                 <if test="q.model != null and q.model != ''">AND c.model LIKE CONCAT('%',#{q.model},'%')</if>
+                 <if test="q.deviceId != null and q.deviceId != ''">AND c.device_id LIKE CONCAT('%',#{q.deviceId},'%')</if>
+                 <if test="q.unionId != null and q.unionId != ''">AND c.union_id LIKE CONCAT('%',#{q.unionId},'%')</if>
+                 <if test="q.beginTime != null">AND c.crash_time &gt;= #{q.beginTime}</if>
+                 <if test="q.endTime != null">AND c.crash_time &lt;= #{q.endTime}</if>
+               ) AS filtered_devices
+        FROM logan_crash_issue i
+        <where>
+            EXISTS (SELECT 1 FROM logan_crash c
+                    WHERE c.app_id=i.app_id AND c.fingerprint=i.fingerprint
+                    <include refid="crashFilterWhere"/>)
+            <include refid="issueFilterWhere"/>
+        </where>
+        ORDER BY i.last_crash_time DESC
+        LIMIT #{q.offset}, #{q.limit}
+    </select>
+
+    <select id="countSearchIssues" parameterType="map" resultType="int">
+        SELECT COUNT(*) FROM logan_crash_issue i
+        <where>
+            EXISTS (SELECT 1 FROM logan_crash c
+                    WHERE c.app_id=i.app_id AND c.fingerprint=i.fingerprint
+                    <include refid="crashFilterWhere"/>)
+            <include refid="issueFilterWhere"/>
+        </where>
+    </select>
+
+    <select id="listAppVersions" parameterType="map" resultType="java.lang.String">
+        SELECT DISTINCT CONCAT(app_version, ' (', build_version, ')')
+        FROM logan_crash
+        <where>
+            <if test="appId != null and appId != ''">app_id=#{appId}</if>
+        </where>
+        ORDER BY 1 DESC LIMIT 50
+    </select>
+
+    <select id="listDevices" parameterType="map" resultType="java.util.HashMap">
+        SELECT DISTINCT brand, model FROM logan_crash
+        <where>
+            <if test="appId != null and appId != ''">app_id=#{appId}</if>
+        </where>
+        ORDER BY brand, model LIMIT 200
+    </select>
 </mapper>

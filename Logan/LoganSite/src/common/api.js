@@ -95,6 +95,18 @@ export function fetchSingleCrashApi(crashId) {
   return instance.get(`/logan/crash/${crashId}/info.json`);
 }
 
+export function fetchCrashSearchApi(params) {
+  return instance.get("/logan/crash/search.json", { params });
+}
+
+export function fetchCrashIssueSearchApi(params) {
+  return instance.get("/logan/crash/issues/search.json", { params });
+}
+
+export function fetchCrashFilterValuesApi(appId) {
+  return instance.get("/logan/crash/filters/values.json", { params: { appId } });
+}
+
 
 // Web apis
 
