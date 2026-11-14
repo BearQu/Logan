@@ -123,9 +123,49 @@
         ORDER BY last_crash_time DESC LIMIT #{limit}
     </select>
 
+    <select id="selectIssueById" parameterType="java.lang.Long" resultMap="issueMap">
+        SELECT * FROM logan_crash_issue WHERE id=#{id}
+    </select>
+
     <select id="queryIssuesWithoutSummary" parameterType="map" resultMap="issueMap">
         SELECT * FROM logan_crash_issue
         WHERE llm_summary IS NULL AND crash_count &gt;= 1
         ORDER BY last_crash_time DESC LIMIT #{limit}
+    </select>
+
+    <update id="updateIssueStatus" parameterType="map">
+        UPDATE logan_crash_issue SET status=#{status} WHERE id=#{id}
+    </update>
+
+    <select id="queryDailyTrend" parameterType="map" resultType="java.util.HashMap">
+        SELECT DATE_FORMAT(FROM_UNIXTIME(crash_time/1000), '%Y-%m-%d') AS d, kind, COUNT(*) AS cnt
+        FROM logan_crash
+        WHERE crash_time BETWEEN #{beginTime} AND #{endTime}
+        <if test="appId != null and appId != ''">AND app_id=#{appId}</if>
+        GROUP BY d, kind ORDER BY d
+    </select>
+
+    <select id="queryKindSummary" parameterType="map" resultType="java.util.HashMap">
+        SELECT kind,
+               COUNT(*) AS total,
+               COUNT(DISTINCT fingerprint) AS issues,
+               COUNT(DISTINCT device_id) AS devices,
+               MAX(crash_time) AS lastCrashTime
+        FROM logan_crash
+        <where>
+            <if test="appId != null and appId != ''">app_id=#{appId}</if>
+        </where>
+        GROUP BY kind
+    </select>
+
+    <resultMap id="crashNoContentMap" type="com.meituan.logan.web.dto.LoganCrashDTO" extends="crashMap">
+    </resultMap>
+    <select id="queryInstancesByFp" parameterType="map" resultMap="crashNoContentMap">
+        SELECT id, app_id, platform, kind, fingerprint, device_id, union_id, user_id,
+               app_version, build_version, brand, model, manufacturer, sdk_int, release_ver,
+               abi, signal_info, top_frames, deferred, crash_time, add_time, content_hash
+        FROM logan_crash
+        WHERE app_id=#{appId} AND fingerprint=#{fingerprint}
+        ORDER BY crash_time DESC LIMIT #{limit}
     </select>
 </mapper>

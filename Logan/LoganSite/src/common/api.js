@@ -65,6 +65,37 @@ export function fetchNativeDownloadUrlApi(taskId) {
 }
 
 
+// Crash apis (崩溃维度)
+
+export function fetchCrashIssuesApi(appId, limit) {
+  return instance.get("/logan/crash/issues/latest.json", { params: { appId, limit } });
+}
+
+export function fetchCrashStatsApi(appId) {
+  return instance.get("/logan/crash/stats.json", { params: { appId } });
+}
+
+export function fetchCrashTrendApi(appId, beginTime, endTime) {
+  return instance.get("/logan/crash/trend.json", { params: { appId, beginTime, endTime } });
+}
+
+export function fetchCrashInstancesApi(appId, fingerprint, limit) {
+  return instance.get("/logan/crash/instances.json", { params: { appId, fingerprint, limit } });
+}
+
+export function fetchCrashIssueDetailApi(id) {
+  return instance.get("/logan/crash/issues/detail.json", { params: { id } });
+}
+
+export function updateCrashIssueStatusApi(id, status) {
+  return instance.get("/logan/crash/issues/status.json", { params: { id, status } });
+}
+
+export function fetchSingleCrashApi(crashId) {
+  return instance.get(`/logan/crash/${crashId}/info.json`);
+}
+
+
 // Web apis
 
 

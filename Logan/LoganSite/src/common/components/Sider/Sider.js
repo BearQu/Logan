@@ -12,12 +12,20 @@ class Sider extends Component {
     selectedKeys: ["0"]
   };
 
+  selectedKeysFromPathname() {
+    const { pathname } = this.props;
+    if (pathname === "/native-list" || pathname === "/native-log-detail") return ["0"];
+    if (pathname === "/web-list" || pathname === "/web-detail") return ["1"];
+    if (pathname === "/crash-list" || pathname === "/crash-detail") return ["2"];
+    return ["0"];
+  }
+
   render() {
     return (
       <Layout.Sider style={style.sider} trigger={null}>
         <div>
           <div className="sider-logo" style={style.logo} />
-          <Menu theme="dark" mode="inline" defaultSelectedKeys={["0"]} selectedKeys={this.state.selectedKeys} onClick={this.handleMenuClick}>
+          <Menu theme="dark" mode="inline" defaultSelectedKeys={["0"]} selectedKeys={this.selectedKeysFromPathname()} onClick={this.handleMenuClick}>
             <Menu.Item key="0">
               <Icon type="mobile" />
               <span>Native日志</span>
@@ -25,6 +33,10 @@ class Sider extends Component {
             <Menu.Item key="1">
               <Icon type="html5" />
               <span>Web日志</span>
+            </Menu.Item>
+            <Menu.Item key="2">
+              <Icon type="bug" />
+              <span>崩溃分析</span>
             </Menu.Item>
           </Menu>
         </div>
@@ -41,6 +53,10 @@ class Sider extends Component {
     } else if (pathname === "/web-list" || pathname === "/web-detail") {
       this.setState({
         selectedKeys: ["1"]
+      });
+    } else if (pathname === "/crash-list" || pathname === "/crash-detail") {
+      this.setState({
+        selectedKeys: ["2"]
       });
     } else {
       this.setState({
@@ -64,6 +80,10 @@ class Sider extends Component {
       this.setState({
         selectedKeys: ["1"]
       });
+    } else if (pathname === "/crash-list" || pathname === "/crash-detail") {
+      this.setState({
+        selectedKeys: ["2"]
+      });
     } else {
       this.setState({
         selectedKeys: ["0"]
@@ -81,6 +101,11 @@ class Sider extends Component {
       window.location.hash ="#/web-list";
       this.setState({
         selectedKeys: ["1"]
+      });
+    } else if (key === "2") {
+      window.location.hash = "#/crash-list";
+      this.setState({
+        selectedKeys: ["2"]
       });
     } else {
       window.location.hash = "#/native-list";

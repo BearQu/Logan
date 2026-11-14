@@ -6,6 +6,8 @@ import {history} from "./store";
 import NativeList from "./views/native-list";
 import NativeLogDetail from "./views/native-log-detail";
 import WebList from "./views/web-list";
+import CrashList from "./views/crash-list";
+import CrashDetail from "./views/crash-detail";
 import WebLogDetail from "./views/web-detail";
 import Sider from "./common/components/Sider/Sider";
 import "antd/dist/antd.css";
@@ -30,6 +32,8 @@ class App extends Component {
                 <Route exact path="/native-log-detail" component={NativeLogDetail}/>
                 <Route exact path="/web-list" component={WebList}/>
                 <Route exact path="/web-detail" component={WebLogDetail}/>
+                <Route exact path="/crash-list" component={CrashList}/>
+                <Route exact path="/crash-detail" component={CrashDetail}/>
               </Switch>
             </div>
           </Layout>
