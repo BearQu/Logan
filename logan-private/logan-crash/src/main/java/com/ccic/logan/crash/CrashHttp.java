@@ -42,6 +42,50 @@ final class CrashHttp {
         }
     }
 
+    /** 同步 POST 一段 gzip 文本，返回是否 2xx（通道 B 冷启动补传用，调用方须在后台线程）。 */
+    static boolean postStringSync(String url, String text, Map<String, String> headers) {
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            GZIPOutputStream gz = new GZIPOutputStream(bos);
+            gz.write(text.getBytes("UTF-8"));
+            gz.finish();
+            gz.close();
+            Map<String, String> h = new java.util.HashMap<>(headers);
+            h.put("Content-Encoding", "gzip");
+            return sendRet(url, bos.toByteArray(), "application/json; charset=utf-8", h, 10000, 30000);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static boolean sendRet(String url, byte[] body, String contentType, Map<String, String> headers,
+                             int connectMs, int readMs) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(connectMs);
+            conn.setReadTimeout(readMs);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", contentType);
+            conn.setRequestProperty("X-Logan-Crash", "1");
+            if (headers != null) for (Map.Entry<String, String> e : headers.entrySet()) {
+                if (e.getValue() != null) conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+            conn.setFixedLengthStreamingMode(body.length);
+            DataOutputStream out = new DataOutputStream(conn.getOutputStream());
+            out.write(body);
+            out.flush();
+            out.close();
+            int code = conn.getResponseCode();
+            return code >= 200 && code < 300;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
     private static void send(String url, byte[] body, String contentType, Map<String, String> headers,
                              int connectMs, int readMs, Done done) {
         HttpURLConnection conn = null;

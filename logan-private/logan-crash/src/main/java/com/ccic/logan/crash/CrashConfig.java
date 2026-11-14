@@ -18,6 +18,8 @@ public final class CrashConfig {
     public boolean anrHandler = true;
     public boolean rethrow = true;             // 崩溃后继续走系统默认处理
     public boolean uploadOnStartup = true;
+    public boolean anrWatchdog = true;          // 独立主线程看门狗（SIGQUIT 钩子被第三方 SDK 抢占时兜底）
+    public long anrTimeoutMs = 5000L;           // 主线程无响应判定阈值
     public Map<String, String> headers = new HashMap<>();
     public int maxTombstoneBytes = 512 * 1024;  // 单包 tombstone 上限（服务端列 will be mediumtext）
 
