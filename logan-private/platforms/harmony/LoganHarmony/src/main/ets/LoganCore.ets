@@ -83,5 +83,11 @@ export class LoganCore {
 
   static writeSeenList(path: string, json: string): void { napi.writeFileText(path, json) as number; }
 
+  /** 上传改名当天文件后重新打开当天文件（mmap 不跟随改名，必须 reopen 否则丢日志） */
+  static reopenToday(): void {
+    if (!inited || !logDir) return;
+    napi.loganOpen(logDir + '/' + todayName()) as number;
+  }
+
   static isReady(): boolean { return inited; }
 }
