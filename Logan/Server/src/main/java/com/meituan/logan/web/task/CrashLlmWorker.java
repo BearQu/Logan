@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.meituan.logan.web.dto.LoganCrashIssueDTO;
 import com.meituan.logan.web.mapper.LoganCrashMapper;
+import com.meituan.logan.web.service.LoganCrashEvidenceService;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
 import org.springframework.stereotype.Component;
@@ -32,9 +33,12 @@ public class CrashLlmWorker {
     private static final int BATCH = 3;
     private static final long SCAN_PERIOD_MS = 60_000L;
     private static final int MAX_SAMPLE = 6000; // 喂模型的 tombstone 截断，防 prompt 爆炸
+    private static final int MAX_LOG_BLOCK = 2500; // 业务日志块截断
 
     @Resource
     private LoganCrashMapper crashMapper;
+    @Resource
+    private LoganCrashEvidenceService loganCrashEvidenceService;
 
     private volatile boolean running;
     private Thread worker;
@@ -96,12 +100,20 @@ public class CrashLlmWorker {
 
     private void summarizeOne(LoganCrashIssueDTO issue) {
         try {
+            String businessLogs = businessLogs(issue);
+            String history = historyNote(issue);
             String prompt = "你是 Android/iOS/鸿蒙 崩溃分析助手。给你一个崩溃问题的指纹、顶层帧与 tombstone 样本"
-                    + "（可能无 Java 栈，属于 native 崩溃）。用中文输出两行：\n"
-                    + "严重性: <致命|严重|一般|轻微>\n摘要: <两三句话：崩在哪、可能原因、缺什么证据>\n\n"
+                    + "（可能无 Java 栈，属于 native 崩溃）。"
+                    + (businessLogs.isEmpty() ? "" : "另外附上同设备崩溃前后的业务日志，请与堆栈互相印证（时间接近的日志往往就是触发路径）。")
+                    + (history.isEmpty() ? "" : "该问题有历史修复记录，判断本次是否为修复未彻底导致的复发。")
+                    + "用中文输出两行：\n"
+                    + "严重性: <致命|严重|一般|轻微>\n摘要: <两三句话：崩在哪、可能原因、缺什么证据"
+                    + (businessLogs.isEmpty() ? "" : "、与业务日志的印证关系") + ">\n\n"
                     + "kind=" + issue.getKind() + "\nsignal=" + nvl(issue.getSignalInfo())
                     + "\nfingerprint=" + issue.getFingerprint() + "\ntopFrames=" + nvl(issue.getTopFrames())
-                    + "\n样本:\n" + truncate(issue.getSampleContent(), MAX_SAMPLE);
+                    + "\n样本:\n" + truncate(issue.getSampleContent(), MAX_SAMPLE)
+                    + (businessLogs.isEmpty() ? "" : "\n\n同设备崩溃前后业务日志(相对崩溃毫秒数, 通道, 内容):\n" + businessLogs)
+                    + (history.isEmpty() ? "" : "\n\n历史修复记录:\n" + history);
             String answer = chat(prompt);
             if (StringUtils.isBlank(answer)) {
                 return;
@@ -118,6 +130,50 @@ public class CrashLlmWorker {
             LOGGER.info("crash issue " + issue.getId() + " summarized: " + severity);
         } catch (Exception e) {
             LOGGER.warn("crash issue " + issue.getId() + " summarize failed: " + e.getMessage());
+        }
+    }
+
+    /** 崩溃前后业务日志（三方印证用）；失败不影响摘要主流程。 */
+    private String businessLogs(LoganCrashIssueDTO issue) {
+        try {
+            if (loganCrashEvidenceService == null || issue.getLastCrashTime() == null
+                    || StringUtils.isBlank(issue.getAffectedDevices())) {
+                return "";
+            }
+            JSONArray devices = JSONArray.parseArray(issue.getAffectedDevices());
+            if (devices == null || devices.isEmpty()) {
+                return "";
+            }
+            String deviceId = devices.getString(devices.size() - 1);
+            List<java.util.Map<String, Object>> rows = loganCrashEvidenceService.timeline(
+                    issue.getAppId(), deviceId, issue.getLastCrashTime(), 180, 15, 60);
+            StringBuilder sb = new StringBuilder();
+            for (java.util.Map<String, Object> row : rows) {
+                sb.append(row.get("deltaMs")).append("ms [").append(row.get("channel")).append("] ")
+                        .append(String.valueOf(row.get("content")).replace('\n', ' ')).append('\n');
+                if (sb.length() > MAX_LOG_BLOCK) {
+                    break;
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            LOGGER.warn("attach business logs failed for issue " + issue.getId() + ": " + e.getMessage());
+            return "";
+        }
+    }
+
+    /** 历史修复报告（本地 DSH 回传的），有则一并喂给模型判断是否复发。 */
+    private String historyNote(LoganCrashIssueDTO issue) {
+        try {
+            if (loganCrashEvidenceService == null) {
+                return "";
+            }
+            if (StringUtils.isNotBlank(issue.getLastFixNote())) {
+                return issue.getLastFixNote();
+            }
+            return "";
+        } catch (Exception e) {
+            return "";
         }
     }
 

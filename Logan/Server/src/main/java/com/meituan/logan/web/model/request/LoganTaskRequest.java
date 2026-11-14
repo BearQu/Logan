@@ -13,6 +13,8 @@ import lombok.Data;
  */
 @Data
 public class LoganTaskRequest {
+    private String appId;
+
     private String deviceId;
 
     private Long beginTime;

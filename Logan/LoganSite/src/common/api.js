@@ -15,18 +15,18 @@ const instance = axios.create({
 
 // Native Apis
 
-export function fetchNativeListInitData() {
-  return instance.get("/logan/latest.json");
+export function fetchNativeListInitData(appId) {
+  return instance.get("/logan/latest.json", { params: { appId } });
 }
 
-export function fetchNativeTaskApi(deviceId, platform, beginTime, endTime) {
-  console.log( { deviceId, platform, beginTime, endTime })
+export function fetchNativeTaskApi(deviceId, platform, beginTime, endTime, appId) {
   return instance.get("/logan/task/search.json", {
     params: {
       deviceId,
       platform,
       beginTime,
-      endTime
+      endTime,
+      appId
     }
   });
 }
@@ -119,16 +119,17 @@ export function fetchWebDownloadUrlApi(tasks) {
   })
 }
 
-export function fetchWebListInitData() {
-  return instance.get("/logan/web/latest.json");
+export function fetchWebListInitData(appId) {
+  return instance.get("/logan/web/latest.json", { params: { appId } });
 }
 
-export function fetchWebTaskApi(deviceId, beginTime, endTime) {
+export function fetchWebTaskApi(deviceId, beginTime, endTime, appId) {
   return instance.get("/logan/web/search.json", {
     params: {
       deviceId,
       beginTime,
-      endTime
+      endTime,
+      appId
     }
   })
 }
@@ -226,3 +227,35 @@ instance.interceptors.response.use(onRequestFulfilled, onRequestRejected);
 
 
 
+
+export function fetchAppListApi() {
+  return instance.get('/logan/app/list.json');
+}
+
+export function saveAppApi(body) {
+  return instance.post("/logan/app/save.json", body);
+}
+
+export function fetchAppInfoApi(appId) {
+  return instance.get('/logan/app/info.json', { params: { appId } });
+}
+
+export function fetchCrashEvidenceApi(params) {
+  return instance.get('/logan/crash/evidence.json', { params });
+}
+
+export function fetchCrashTimelineApi(params) {
+  return instance.get('/logan/crash/timeline.json', { params });
+}
+
+export function fetchCrashDaysApi(params) {
+  return instance.get('/logan/crash/days.json', { params });
+}
+
+export function fetchCrashFixesApi(params) {
+  return instance.get('/logan/crash/fixes.json', { params });
+}
+
+export function reportCrashFixApi(body) {
+  return instance.post('/logan/crash/fix/report.json', body);
+}

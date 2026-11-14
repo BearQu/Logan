@@ -9,6 +9,7 @@ import WebList from "./views/web-list";
 import CrashList from "./views/crash-list";
 import CrashDetail from "./views/crash-detail";
 import WebLogDetail from "./views/web-detail";
+import AppList from "./views/app-list";
 import Sider from "./common/components/Sider/Sider";
 import "antd/dist/antd.css";
 import "./app.scss";
@@ -34,6 +35,7 @@ class App extends Component {
                 <Route exact path="/web-detail" component={WebLogDetail}/>
                 <Route exact path="/crash-list" component={CrashList}/>
                 <Route exact path="/crash-detail" component={CrashDetail}/>
+                <Route exact path="/app-list" component={AppList}/>
               </Switch>
             </div>
           </Layout>

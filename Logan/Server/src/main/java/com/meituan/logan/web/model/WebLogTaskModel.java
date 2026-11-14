@@ -18,6 +18,10 @@ import java.util.Date;
 @Data
 public class WebLogTaskModel {
 
+    private String appId;
+
+    private String appName;
+
     private String deviceId;
 
     private int logPageNo;
@@ -54,6 +58,7 @@ public class WebLogTaskModel {
 
     public WebLogTaskDTO transformToDto() {
         WebLogTaskDTO taskDTO = new WebLogTaskDTO();
+        taskDTO.setAppId(appId);
         taskDTO.setDeviceId(deviceId);
         taskDTO.setWebSource(webSource);
         taskDTO.setEnvironment(environment);

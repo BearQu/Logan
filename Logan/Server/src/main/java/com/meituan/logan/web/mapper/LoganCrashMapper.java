@@ -45,6 +45,12 @@ public interface LoganCrashMapper {
     /** 更新问题处理状态（Bugly 式「已修复/忽略」闭环，0 未处理 1 处理中 2 已修复 3 忽略）。 */
     int updateIssueStatus(@Param("id") long id, @Param("status") int status);
 
+    /** 同指纹再次上报 / 本地回传推翻「已修复」结论 → 重新打开并累计复发次数。 */
+    int reopenIssue(@Param("id") long id, @Param("reopenCount") int reopenCount, @Param("lastFixNote") String lastFixNote);
+
+    /** 只更新最近修复摘要，不动状态（补充说明类回传）。 */
+    int updateIssueFixNote(@Param("id") long id, @Param("lastFixNote") String lastFixNote);
+
     // ---- 控制台统计（LoganSite 崩溃维度页） ----
 
     /** 按天趋势：[{d:"2026-11-14", kind, cnt}]，beginTime 起。 */

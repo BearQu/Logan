@@ -53,9 +53,9 @@ public class WebTaskServiceImpl implements WebTaskService {
     }
 
     @Override
-    public List<WebLogTaskDTO> search(long beginTime, long endTime, String deviceId) {
+    public List<WebLogTaskDTO> search(long beginTime, long endTime, String deviceId, String appId) {
         try {
-            return webLogTaskMapper.query(beginTime, endTime, deviceId);
+            return webLogTaskMapper.query(beginTime, endTime, deviceId, appId);
         } catch (Exception e) {
             LOGGER.error(e);
         }
@@ -85,11 +85,21 @@ public class WebTaskServiceImpl implements WebTaskService {
     }
 
     @Override
-    public List<WebLogTaskDTO> latest(int count) {
+    public List<WebLogTaskDTO> latest(int count, String appId) {
         try {
             long maxId = webLogTaskMapper.maxId();
-            long minId = Math.max(0, maxId - count);
-            return webLogTaskMapper.queryByRange(minId, maxId);
+            long minId = Math.max(0, maxId - count * 20L);
+            List<WebLogTaskDTO> all = webLogTaskMapper.queryByRange(minId, maxId);
+            if (org.apache.commons.lang3.StringUtils.isNotBlank(appId)) {
+                List<WebLogTaskDTO> filtered = new java.util.ArrayList<>();
+                for (WebLogTaskDTO dto : all) {
+                    if (appId.equals(dto.getAppId())) {
+                        filtered.add(dto);
+                    }
+                }
+                return filtered;
+            }
+            return all;
         } catch (Exception e) {
             LOGGER.error(e);
             return Collections.emptyList();

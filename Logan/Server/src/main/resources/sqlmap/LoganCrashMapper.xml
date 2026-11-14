@@ -45,6 +45,8 @@
         <result column="llm_summary" jdbcType="LONGVARCHAR" property="llmSummary"/>
         <result column="llm_severity" jdbcType="VARCHAR" property="llmSeverity"/>
         <result column="status" jdbcType="INTEGER" property="status"/>
+        <result column="reopen_count" jdbcType="INTEGER" property="reopenCount"/>
+        <result column="last_fix_note" jdbcType="LONGVARCHAR" property="lastFixNote"/>
         <result column="add_time" jdbcType="BIGINT" property="addTime"/>
         <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
     </resultMap>
@@ -111,7 +113,17 @@
         WHERE id=#{id}
     </update>
 
-    <update id="updateLlmResult" parameterType="map">
+        <update id="reopenIssue" parameterType="map">
+      UPDATE logan_crash_issue
+      SET status = 0, reopen_count = #{reopenCount}, last_fix_note = #{lastFixNote}
+      WHERE id = #{id}
+    </update>
+
+    <update id="updateIssueFixNote" parameterType="map">
+      UPDATE logan_crash_issue SET last_fix_note = #{lastFixNote} WHERE id = #{id}
+    </update>
+
+<update id="updateLlmResult" parameterType="map">
         UPDATE logan_crash_issue SET llm_summary=#{llmSummary}, llm_severity=#{llmSeverity} WHERE id=#{id}
     </update>
 

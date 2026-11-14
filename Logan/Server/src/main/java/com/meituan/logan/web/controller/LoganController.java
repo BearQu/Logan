@@ -44,8 +44,8 @@ public class LoganController {
 
     @GetMapping("/latest.json")
     @ResponseBody
-    public LoganResponse<List<LoganTaskModel>> latestReport() {
-        return LoganResponse.success(taskService.queryLatest(DEFAULT_LIMIT));
+    public LoganResponse<List<LoganTaskModel>> latestReport(String appId) {
+        return LoganResponse.success(taskService.queryLatest(appId, DEFAULT_LIMIT));
     }
 
     /**
@@ -53,11 +53,12 @@ public class LoganController {
      */
     @GetMapping("/task/search.json")
     @ResponseBody
-    public LoganResponse<List<LoganTaskModel>> search(String deviceId, Long beginTime, Long endTime, Integer platform) {
+    public LoganResponse<List<LoganTaskModel>> search(String appId, String deviceId, Long beginTime, Long endTime, Integer platform) {
         if (StringUtils.isEmpty(deviceId)) {
             return LoganResponse.badParam(PARAM_ERROR);
         }
         LoganTaskRequest request = new LoganTaskRequest(deviceId, beginTime, endTime, platform);
+        request.setAppId(appId);
         request.ready();
         return LoganResponse.success(taskService.search(request));
     }

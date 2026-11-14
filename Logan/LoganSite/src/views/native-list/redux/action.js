@@ -4,10 +4,11 @@ import {
   NATIVE_CHANGE_LOADING
 } from "./reducer";
 import {fetchNativeTaskApi, fetchNativeListInitData} from "../../../common/api";
+import { getCurrentAppId } from "../../../common/currentApp";
 
 export function fetchInitData() {
   return (dispatch) => {
-    return fetchNativeListInitData()
+    return fetchNativeListInitData(getCurrentAppId())
       .then(data => {
         dispatch({
           type: NATIVE_UPDATE_TASKS,
@@ -37,7 +38,7 @@ export function changeLoading(loading) {
 
 export function fetchTasks({deviceId, platform, beginTime, endTime}) {
   return (dispatch, getState) => {
-    return fetchNativeTaskApi(deviceId, platform, beginTime, endTime)
+    return fetchNativeTaskApi(deviceId, platform, beginTime, endTime, getCurrentAppId())
       .then(data => {
         dispatch({
           type: NATIVE_UPDATE_TASKS,

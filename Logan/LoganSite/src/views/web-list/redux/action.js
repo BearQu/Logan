@@ -4,11 +4,12 @@ import {
   WEB_CHANGE_LOADING
 } from "./reducer";
 import {fetchWebTaskApi, fetchWebListInitData} from "../../../common/api";
+import { getCurrentAppId } from "../../../common/currentApp";
 
 
 export function fetchInitData() {
   return (dispatch) => {
-    return fetchWebListInitData()
+    return fetchWebListInitData(getCurrentAppId())
       .then(data => {
         dispatch({
           type: WEB_UPDATE_TASKS,
@@ -28,7 +29,7 @@ export function updateFilterConditions(newFilterConditions) {
 }
 
 export function changeLoading(loading) {
-  return (dispatch) => {
+  return (dispatch, getState) => {
     dispatch({
       type: WEB_CHANGE_LOADING,
       loading: loading
@@ -37,8 +38,8 @@ export function changeLoading(loading) {
 }
 
 export function fetchTasks({deviceId, beginTime, endTime}) {
-  return (dispatch) => {
-    return fetchWebTaskApi(deviceId, beginTime, endTime)
+  return (dispatch, getState) => {
+    return fetchWebTaskApi(deviceId, beginTime, endTime, getCurrentAppId())
       .then(data => {
         dispatch({
           type: WEB_UPDATE_TASKS,

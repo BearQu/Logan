@@ -1,5 +1,7 @@
 import React, { Component } from "react";
-import { Table, Icon, Button } from "antd";
+import { Table, Icon, Button, Badge, Tooltip } from "antd";
+import { fetchCrashDaysApi } from "../../../common/api";
+import { getCurrentAppId } from "../../../common/currentApp";
 import moment from "moment";
 import "antd/dist/antd.css";
 import "./style.scss";
@@ -27,6 +29,62 @@ const ICON_BY_PLATFORM = {
 };
 
 class ListPage extends Component {
+
+  state = { crashDays: [] };
+
+  componentDidMount() {
+    this.loadCrashDays();
+  }
+
+  componentDidUpdate(prev) {
+    if (prev.tasks !== this.props.tasks) {
+      this.loadCrashDays();
+    }
+  }
+
+  /** 崩溃徽标：当前应用时间窗内有崩溃的 (设备, 日期) 集合，让日志列表能反向指认「这台机器这天崩过」 */
+  loadCrashDays = async () => {
+    const { tasks } = this.props;
+    if (!tasks || !tasks.length) {
+      this.setState({ crashDays: [] });
+      return;
+    }
+    try {
+      const times = tasks.map((t) => Number(t.logDate)).filter((n) => n > 0);
+      if (!times.length) { return; }
+      const begin = Math.min.apply(null, times);
+      const end = Math.max.apply(null, times) + 86400000;
+      const rows = await fetchCrashDaysApi({ appId: getCurrentAppId(), beginTime: begin, endTime: end });
+      this.setState({ crashDays: rows || [] });
+    } catch (e) {
+      this.setState({ crashDays: [] });
+    }
+  };
+
+  crashOf = (deviceId, logDate) => {
+    const { crashDays } = this.state;
+    if (!deviceId || !logDate) { return []; }
+    const day = moment(Number(logDate)).format("YYYY-MM-DD");
+    return crashDays.filter((r) => r.deviceId === deviceId && r.crashDate === day);
+  };
+
+  gotoCrash = (deviceId) => () => {
+    window.location.hash = "#/crash-list?deviceId=" + encodeURIComponent(deviceId) + "&appId=" + encodeURIComponent(getCurrentAppId() || "");
+  };
+
+  renderCrashBadge = (deviceId, logDate) => {
+    const hits = this.crashOf(deviceId, logDate);
+    if (!hits.length) { return <span style={{ color: "#bfbfbf" }}>—</span>; }
+    const kinds = Object.keys(hits.reduce((m, h) => { m[h.kind] = 1; return m; }, {}));
+    return (
+      <Tooltip title={<span>{hits.map((h, i) => <div key={i}>{h.kind} · {h.fingerprint ? String(h.fingerprint).slice(0, 24) : ""}</div>)}</span>}>
+        <Button size="small" onClick={this.gotoCrash(deviceId)} style={{ borderColor: "#ffa39e", color: "#f5222d", background: "#fff1f0" }}>
+          <Badge status="error" /> {kinds.join("/")} ×{hits.length}
+        </Button>
+      </Tooltip>
+    );
+  };
+
   render() {
     const { filterConditions, tasks, updateFilterConditions, fetchTasks, loading, type } = this.props;
     return (
@@ -63,6 +121,7 @@ class ListPage extends Component {
         <Column title="设备平台" dataIndex="platform" key="platform" width="10%" render={this.renderColumnPlatform} />
         <Column title="日志当天时间" dataIndex="logDate" key="logDate" width="10%" render={this.renderColumnLogDate} />
         <Column title="日志上报时间" dataIndex="addTime" key="addTime" width="10%" render={this.renderColumnAddTime} />
+        <Column title="当日崩溃" dataIndex="crashFlag" key="crashFlag" width="12%" render={(v, r) => this.renderCrashBadge(r.deviceId, r.logDate)} />
         <Column title="操作" dataIndex="action" width="10%" render={this.renderColumnAction} />
       </Table>
     );
@@ -76,6 +135,7 @@ class ListPage extends Component {
         <Column title="环境信息" dataIndex="environment" key="environment" width="15%" render={this.renderColumnEnvironment} />
         <Column title="日志当天时间" dataIndex="logDate" key="logDate" width="10%" render={this.renderColumnLogDate} />
         <Column title="日志上报时间" dataIndex="addTime" key="addTime" width="10%" render={this.renderColumnAddTime} />
+        <Column title="当日崩溃" dataIndex="crashFlag" key="crashFlag" width="12%" render={(v, r) => this.renderCrashBadge(r.deviceId, r.logDate)} />
         <Column title="操作" dataIndex="action" width="10%" render={this.renderColumnAction} />
       </Table>
     );

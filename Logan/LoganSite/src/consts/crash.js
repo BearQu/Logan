@@ -29,3 +29,28 @@ export function parseJsonArrayMaybe(s) {
     return [];
   }
 }
+
+
+export const FIX_ACTION_META = {
+  fixed: { text: '已修复', color: '#52c41a' },
+  partial: { text: '部分修复', color: '#faad14' },
+  verifying: { text: '验证中', color: '#1890ff' },
+  verified: { text: '已验证', color: '#13c2c2' },
+  wontfix: { text: '不修复', color: '#8c8c8c' },
+  reopen: { text: '重新打开', color: '#f5222d' },
+};
+
+export const FIX_STATUS_META = {
+  fixed: { text: '已修复', color: '#52c41a' },
+  partial: { text: '部分修复', color: '#faad14' },
+  verifying: { text: '验证中', color: '#1890ff' },
+  verified: { text: '已验证', color: '#13c2c2' },
+  wontfix: { text: '不修复', color: '#8c8c8c' },
+  open: { text: '未处理', color: '#f5222d' },
+};
+
+export const SOURCE_META = {
+  auto_client: { text: '客户端自动登记', color: 'blue' },
+  auto_crash: { text: '崩溃上报自动登记', color: 'geekblue' },
+  manual: { text: '人工登记', color: 'green' },
+};

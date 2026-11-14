@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganAppMapper">
+    <resultMap id="appMap" type="com.meituan.logan.web.dto.LoganAppDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="app_name" jdbcType="VARCHAR" property="appName"/>
+        <result column="icon_path" jdbcType="VARCHAR" property="iconPath"/>
+        <result column="icon_hash" jdbcType="VARCHAR" property="iconHash"/>
+        <result column="platform" jdbcType="INTEGER" property="platform"/>
+        <result column="latest_app_version" jdbcType="VARCHAR" property="latestAppVersion"/>
+        <result column="latest_build_version" jdbcType="VARCHAR" property="latestBuildVersion"/>
+        <result column="last_device_id" jdbcType="VARCHAR" property="lastDeviceId"/>
+        <result column="source" jdbcType="VARCHAR" property="source"/>
+        <result column="first_seen" jdbcType="BIGINT" property="firstSeen"/>
+        <result column="last_report_time" jdbcType="BIGINT" property="lastReportTime"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+        <result column="crash_count" jdbcType="INTEGER" property="crashCount"/>
+        <result column="issue_count" jdbcType="INTEGER" property="issueCount"/>
+        <result column="device_count" jdbcType="INTEGER" property="deviceCount"/>
+        <result column="log_count" jdbcType="INTEGER" property="logCount"/>
+    </resultMap>
+
+    <insert id="insertIgnore" parameterType="com.meituan.logan.web.dto.LoganAppDTO" useGeneratedKeys="true" keyColumn="id" keyProperty="id">
+      INSERT IGNORE INTO logan_app (app_id,app_name,platform,latest_app_version,latest_build_version,last_device_id,source,first_seen,last_report_time,add_time)
+      VALUES (#{appId},#{appName},#{platform},#{latestAppVersion},#{latestBuildVersion},#{lastDeviceId},#{source},#{lastReportTime},#{lastReportTime},#{addTime})
+    </insert>
+
+    <select id="selectByAppId" parameterType="java.lang.String" resultMap="appMap">
+      SELECT * FROM logan_app WHERE app_id=#{appId}
+    </select>
+
+    <select id="listAll" resultMap="appMap">
+      SELECT a.*,
+             (SELECT COUNT(*) FROM logan_crash c WHERE c.app_id = a.app_id) AS crash_count,
+             (SELECT COUNT(*) FROM logan_crash_issue i WHERE i.app_id = a.app_id) AS issue_count,
+             (SELECT COUNT(DISTINCT d.dev) FROM (
+                 SELECT device_id AS dev FROM logan_task WHERE app_id = a.app_id AND device_id &lt;&gt; ''
+                 UNION SELECT device_id FROM logan_crash WHERE app_id = a.app_id AND device_id IS NOT NULL
+                 UNION SELECT device_id FROM web_task WHERE app_id = a.app_id AND device_id &lt;&gt; ''
+             ) d) AS device_count,
+             ((SELECT COUNT(*) FROM logan_task t WHERE t.app_id = a.app_id)
+              + (SELECT COUNT(*) FROM web_task w WHERE w.app_id = a.app_id)) AS log_count
+      FROM logan_app a
+      ORDER BY (a.last_report_time IS NULL), a.last_report_time DESC, a.id DESC
+    </select>
+
+    <update id="touch" parameterType="map">
+      UPDATE logan_app
+      SET last_report_time = #{lastReportTime}
+      <if test="platform != null">, platform = #{platform}</if>
+      <if test="appVersion != null and appVersion != ''">, latest_app_version = #{appVersion}</if>
+      <if test="buildVersion != null and buildVersion != ''">, latest_build_version = #{buildVersion}</if>
+      <if test="deviceId != null and deviceId != ''">, last_device_id = #{deviceId}</if>
+      WHERE app_id = #{appId}
+    </update>
+
+    <update id="updateProfile" parameterType="map">
+      UPDATE logan_app
+      <set>
+        <if test="appName != null and appName != ''">app_name = #{appName},</if>
+        <if test="iconPath != null and iconPath != ''">icon_path = #{iconPath},</if>
+        <if test="iconHash != null and iconHash != ''">icon_hash = #{iconHash},</if>
+        <if test="platform != null">platform = #{platform},</if>
+        <if test="source != null and source != ''">source = #{source},</if>
+      </set>
+      WHERE app_id = #{appId}
+    </update>
+</mapper>

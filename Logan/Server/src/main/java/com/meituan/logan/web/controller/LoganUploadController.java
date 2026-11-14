@@ -4,6 +4,7 @@ import com.meituan.logan.web.enums.ResultEnum;
 import com.meituan.logan.web.model.LoganTaskModel;
 import com.meituan.logan.web.model.response.LoganResponse;
 import com.meituan.logan.web.parser.RequestContextParser;
+import com.meituan.logan.web.util.HeaderUtil;
 import com.meituan.logan.web.service.LoganLogFileService;
 import com.meituan.logan.web.service.LoganTaskService;
 import com.meituan.logan.web.util.FileUtil;
@@ -32,6 +33,8 @@ public class LoganUploadController {
     private LoganTaskService taskService;
     @Resource
     private LoganLogFileService fileService;
+    @Resource
+    private com.meituan.logan.web.service.LoganAppService appService;
 
     /**
      * 一次上报一个任务一天日志
@@ -40,6 +43,9 @@ public class LoganUploadController {
     @ResponseBody
     public LoganResponse<String> upload(HttpServletRequest request) throws IOException {
         LoganTaskModel model = RequestContextParser.parse(request);
+        // 应用自动登记：客户端只要在 header 带上 appId（可选 appName/appName 走 /logan/app/save.json），平台无需手工录入
+        appService.register(model.getAppId(), HeaderUtil.utf8(request.getHeader("appName")), model.getPlatform(),
+                model.getAppVersion(), model.getBuildVersion(), model.getDeviceId(), "auto_client");
         ResultEnum result = fileService.write(request.getInputStream(), model.getLogFileName());
         if (ResultEnum.SUCCESS != result) {
             return LoganResponse.exception(result.name());

@@ -37,11 +37,11 @@ public interface WebTaskService {
      * @param deviceId
      * @return
      */
-    List<WebLogTaskDTO> search(long beginTime, long endTime, String deviceId);
+    List<WebLogTaskDTO> search(long beginTime, long endTime, String deviceId, String appId);
 
     List<WebLogTaskDTO> queryByTaskIds(List<Long> taskIds);
 
     void updateStatus(long taskId, TaskStatusEnum status);
 
-    List<WebLogTaskDTO> latest(int count);
+    List<WebLogTaskDTO> latest(int count, String appId);
 }

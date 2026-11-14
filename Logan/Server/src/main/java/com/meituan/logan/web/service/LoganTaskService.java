@@ -13,5 +13,5 @@ public interface LoganTaskService {
 
     long insertTask(LoganTaskModel loganTaskModel);
 
-    List<LoganTaskModel> queryLatest(int limit);
+    List<LoganTaskModel> queryLatest(String appId, int limit);
 }

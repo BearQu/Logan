@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganCrashTimelineMapper">
+
+    <select id="queryNativeLogsAround" parameterType="map" resultType="java.util.Map">
+      SELECT d.id AS detailId, t.id AS taskId, d.log_type AS logType, d.log_time AS logTime,
+             d.content AS content, t.app_version AS appVersion, t.build_version AS buildVersion,
+             'native' AS channel
+      FROM logan_log_detail d
+      JOIN logan_task t ON t.id = d.task_id
+      WHERE t.device_id = #{deviceId}
+        <if test="appId != null and appId != ''">AND t.app_id = #{appId}</if>
+        AND d.log_time BETWEEN #{beginTime} AND #{endTime}
+        AND d.log_type &lt; 90
+      ORDER BY d.log_time ASC
+      LIMIT 0,#{limit}
+    </select>
+
+    <select id="queryWebLogsAround" parameterType="map" resultType="java.util.Map">
+      SELECT wd.id AS detailId, wt.id AS taskId, wd.log_type AS logType, wd.log_time AS logTime,
+             wd.content AS content, '' AS appVersion, '' AS buildVersion, 'h5' AS channel
+      FROM web_detail wd
+      JOIN web_task wt ON wt.id = wd.task_id
+      WHERE wt.device_id = #{deviceId}
+        <if test="appId != null and appId != ''">AND wt.app_id = #{appId}</if>
+        AND wd.log_time BETWEEN #{beginTime} AND #{endTime}
+      ORDER BY wd.log_time ASC
+      LIMIT 0,#{limit}
+    </select>
+
+    <select id="queryCrashDays" parameterType="map" resultType="java.util.Map">
+      SELECT device_id AS deviceId, kind, fingerprint,
+             FROM_UNIXTIME(crash_time / 1000, '%Y-%m-%d') AS crashDate,
+             COUNT(*) AS cnt
+      FROM logan_crash
+      <where>
+        <if test="appId != null and appId != ''">AND app_id = #{appId}</if>
+        <if test="beginTime != null">AND crash_time &gt;= #{beginTime}</if>
+        <if test="endTime != null">AND crash_time &lt;= #{endTime}</if>
+      </where>
+      GROUP BY device_id, kind, fingerprint, crashDate
+      ORDER BY crashDate DESC
+      LIMIT 0,500
+    </select>
+</mapper>

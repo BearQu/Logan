@@ -12,6 +12,7 @@ import {
 } from "../../common/api";
 import { KIND_META, SEVERITY_META, STATUS_META, parseJsonArrayMaybe } from "../../consts/crash";
 import TrendChart from "./components/TrendChart";
+import { getCurrentAppId, ensureApp, subscribe as subscribeApp } from "../../common/currentApp";
 
 const { Option } = Select;
 const { confirm } = Modal;
@@ -81,7 +82,7 @@ export class CrashList extends Component {
     if (this.props.location) {
       params = parse(this.props.location.search, { ignoreQueryPrefix: true });
     }
-    const appId = params.appId || "com.ccic.baodai";
+    const appId = params.appId || getCurrentAppId();
     const filters = Object.assign({}, EMPTY_FILTERS);
     // 支持 URL 带入筛选条件，便于外部深链
     ["kind", "brand", "model", "deviceId", "appVersion", "keyword"].forEach((k) => {
@@ -94,7 +95,43 @@ export class CrashList extends Component {
       this.loadCrashes();
       this.loadFilterValues();
     });
+    // 顶栏切换应用：URL 没指定 appId 时跟随全局应用重载
+    ensureApp().then(() => {
+      if (!params.appId) {
+        const cur = getCurrentAppId();
+        if (cur !== this.state.appId) {
+          this.setState({ appId: cur }, () => this.reloadAll());
+        }
+      }
+    });
+    this._unsubApp = subscribeApp((cur) => {
+      if (!params.appId && cur !== this.state.appId) {
+        this.setState({ appId: cur }, () => this.reloadAll());
+      }
+    });
   }
+
+  componentWillUnmount() {
+    if (this._unsubApp) { this._unsubApp(); }
+  }
+
+  /** 按当前已生效的筛选条件导出证据包（多维筛选，交给平台拼成 zip-ready JSON，本地 DSH 分析用） */
+  exportBundle = () => {
+    const { appId, applied } = this.state;
+    if (!appId) { message.warning("请先选择应用"); return; }
+    const base = (window.API_BASE_URL || "/logan-web") + "/logan/crash/export.download";
+    const q = Object.assign({ appId, maxIssues: 20 }, toParams(applied, {}));
+    delete q.limit; delete q.offset;
+    const qs = Object.keys(q).map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(q[k])).join("&");
+    window.open(base + "?" + qs, "_blank");
+  };
+
+  reloadAll = () => {
+    this.loadStatsAndTrend();
+    this.loadIssuesByServer();
+    this.loadCrashes();
+    this.loadFilterValues();
+  };
 
   loadFilterValues = async () => {
     const { appId } = this.state;
@@ -511,7 +548,8 @@ export class CrashList extends Component {
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <span style={{ fontSize: 20, fontWeight: 700, color: "#262626" }}>崩溃分析</span>
           <span style={{ marginLeft: 12, color: "#8c8c8c", fontSize: 13 }}>appId: {appId || "-"}</span>
-          <Button icon="reload" style={{ marginLeft: "auto" }} onClick={this.applySearch} loading={loading || crashLoading}>刷新</Button>
+          <Button icon="download" style={{ marginLeft: "auto", marginRight: 8 }} onClick={this.exportBundle}>导出证据包</Button>
+          <Button icon="reload" onClick={this.applySearch} loading={loading || crashLoading}>刷新</Button>
         </div>
 
         {this.renderKpi()}

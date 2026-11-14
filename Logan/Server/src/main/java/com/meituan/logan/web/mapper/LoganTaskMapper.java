@@ -16,5 +16,5 @@ public interface LoganTaskMapper {
 
     List<LoganTaskDTO> search(@Param("request") LoganTaskRequest request);
 
-    List<LoganTaskDTO> queryLatest(@Param("limit") int limit);
+    List<LoganTaskDTO> queryLatest(@Param("appId") String appId, @Param("limit") int limit);
 }

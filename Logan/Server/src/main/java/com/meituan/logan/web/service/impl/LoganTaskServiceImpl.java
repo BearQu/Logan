@@ -62,9 +62,9 @@ public class LoganTaskServiceImpl implements LoganTaskService {
     }
 
     @Override
-    public List<LoganTaskModel> queryLatest(int limit) {
+    public List<LoganTaskModel> queryLatest(String appId, int limit) {
         try {
-            List<LoganTaskDTO> list = taskMapper.queryLatest(limit);
+            List<LoganTaskDTO> list = taskMapper.queryLatest(appId, limit);
             if (CollectionUtils.isNotEmpty(list)) {
                 Collections.sort(list);
                 return Lists.newArrayList(Lists.transform(list, LoganTaskDTO::transformToModel));

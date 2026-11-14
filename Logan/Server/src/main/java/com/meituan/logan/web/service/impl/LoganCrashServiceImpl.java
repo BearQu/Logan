@@ -28,6 +28,8 @@ public class LoganCrashServiceImpl implements LoganCrashService {
     private static final Logger LOGGER = Logger.getLogger(LoganCrashServiceImpl.class);
     private static final int MAX_TRACKED_DEVICES = 500;
     private static final int MAX_SAMPLE_BYTES = 120 * 1024; // issue 样本截断，tombstone 原文在 logan_crash.content
+    private static final int STATUS_PROCESSING = 1;
+    private static final int STATUS_FIXED = 2;
 
     @Resource
     private LoganCrashMapper crashMapper;
@@ -140,9 +142,34 @@ public class LoganCrashServiceImpl implements LoganCrashService {
                 String devices = mergeDevice(exist.getAffectedDevices(), dto.getDeviceId());
                 crashMapper.updateIssueAgg(exist.getId(), exist.getCrashCount() + 1,
                         Math.max(nvlL(exist.getLastCrashTime(), 0), dto.getCrashTime()), devices);
+                autoReopenIfFixed(exist, dto);
             }
         } catch (Exception e) {
             LOGGER.error("crash issue aggregate failed (crash row saved): " + e.getMessage());
+        }
+    }
+
+    /**
+     * 用户要求：修复后再有相同崩溃上报，就重新打开，并把以前的修改内容和证据一起带着。
+     * 只在「已修复」状态下重开；处理中/未处理保持原状，last_fix_note 不清空（历史留在证据包里）。
+     */
+    private void autoReopenIfFixed(LoganCrashIssueDTO exist, LoganCrashDTO dto) {
+        try {
+            // 宣称已修(报告回传→处理中=1 且有修复备注) 或 人工确认已修复(=2) 后同指纹再上报 → 一律重开
+            boolean claimedFixed = exist.getStatus() == STATUS_FIXED
+                    || (exist.getStatus() == STATUS_PROCESSING && StringUtils.isNotBlank(exist.getLastFixNote()));
+            if (!claimedFixed) {
+                return;
+            }
+            String note = "已修复结论被推翻：" + nvl(dto.getKind(), "?") + " 于 " + dto.getCrashTime()
+                    + " 在设备 " + nvl(dto.getDeviceId(), "-") + "（" + nvl(dto.getBrand(), "?") + " "
+                    + nvl(dto.getModel(), "?") + " v" + nvl(dto.getAppVersion(), "?") + "）再次上报，问题重新打开。"
+                    + (StringUtils.isBlank(exist.getLastFixNote()) ? "" : " 历史修复：" + exist.getLastFixNote());
+            crashMapper.reopenIssue(exist.getId(), Math.max(0, nvlI(exist.getReopenCount())) + 1,
+                    note.length() > 1800 ? note.substring(0, 1800) : note);
+            LOGGER.warn("crash issue " + exist.getId() + " reopened by new report, deviceId=" + dto.getDeviceId());
+        } catch (Exception e) {
+            LOGGER.warn("auto reopen failed for issue " + exist.getId() + ": " + e.getMessage());
         }
     }
 
@@ -202,6 +229,10 @@ public class LoganCrashServiceImpl implements LoganCrashService {
 
     private static String nvl(String s, String def) {
         return StringUtils.isBlank(s) ? def : s;
+    }
+
+    private static int nvlI(Integer i) {
+        return i == null ? 0 : i;
     }
 
     private static long nvlL(Long l, long def) {

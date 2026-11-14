@@ -48,7 +48,173 @@ public class LoganCrashIssueDTO {
     /** 0 未处理 1 处理中 2 已修复 3 忽略 */
     private int status;
 
+    /** 「已修复」后同指纹再次上报的次数（本地修复被推翻的证据） */
+    private Integer reopenCount;
+
+    /** 最近一次本地修复报告的摘要（修复人/时间/根因/细节） */
+    private String lastFixNote;
+
     private long addTime;
 
     private Date updateTime;
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public String getAppId() {
+        return appId;
+    }
+
+    public void setAppId(String appId) {
+        this.appId = appId;
+    }
+
+    public int getPlatform() {
+        return platform;
+    }
+
+    public void setPlatform(int platform) {
+        this.platform = platform;
+    }
+
+    public String getKind() {
+        return kind;
+    }
+
+    public void setKind(String kind) {
+        this.kind = kind;
+    }
+
+    public String getFingerprint() {
+        return fingerprint;
+    }
+
+    public void setFingerprint(String fingerprint) {
+        this.fingerprint = fingerprint;
+    }
+
+    public String getSampleContent() {
+        return sampleContent;
+    }
+
+    public void setSampleContent(String sampleContent) {
+        this.sampleContent = sampleContent;
+    }
+
+    public String getTopFrames() {
+        return topFrames;
+    }
+
+    public void setTopFrames(String topFrames) {
+        this.topFrames = topFrames;
+    }
+
+    public String getSignalInfo() {
+        return signalInfo;
+    }
+
+    public void setSignalInfo(String signalInfo) {
+        this.signalInfo = signalInfo;
+    }
+
+    public Long getFirstCrashTime() {
+        return firstCrashTime;
+    }
+
+    public void setFirstCrashTime(Long firstCrashTime) {
+        this.firstCrashTime = firstCrashTime;
+    }
+
+    public Long getLastCrashTime() {
+        return lastCrashTime;
+    }
+
+    public void setLastCrashTime(Long lastCrashTime) {
+        this.lastCrashTime = lastCrashTime;
+    }
+
+    public int getCrashCount() {
+        return crashCount;
+    }
+
+    public void setCrashCount(int crashCount) {
+        this.crashCount = crashCount;
+    }
+
+    public String getAffectedDevices() {
+        return affectedDevices;
+    }
+
+    public void setAffectedDevices(String affectedDevices) {
+        this.affectedDevices = affectedDevices;
+    }
+
+    public String getLlmSummary() {
+        return llmSummary;
+    }
+
+    public void setLlmSummary(String llmSummary) {
+        this.llmSummary = llmSummary;
+    }
+
+    public String getLlmSeverity() {
+        return llmSeverity;
+    }
+
+    public void setLlmSeverity(String llmSeverity) {
+        this.llmSeverity = llmSeverity;
+    }
+
+    public Integer getFilteredCrashCount() {
+        return filteredCrashCount;
+    }
+
+    public void setFilteredCrashCount(Integer filteredCrashCount) {
+        this.filteredCrashCount = filteredCrashCount;
+    }
+
+    public Integer getFilteredDevices() {
+        return filteredDevices;
+    }
+
+    public void setFilteredDevices(Integer filteredDevices) {
+        this.filteredDevices = filteredDevices;
+    }
+
+    public int getStatus() {
+        return status;
+    }
+
+    public void setStatus(int status) {
+        this.status = status;
+    }
+
+    public Integer getReopenCount() {
+        return reopenCount;
+    }
+
+    public void setReopenCount(Integer reopenCount) {
+        this.reopenCount = reopenCount;
+    }
+
+    public String getLastFixNote() {
+        return lastFixNote;
+    }
+
+    public void setLastFixNote(String lastFixNote) {
+        this.lastFixNote = lastFixNote;
+    }
+
+    public long getAddTime() {
+        return addTime;
+    }
+
+    public void setAddTime(long addTime) {
+        this.addTime = addTime;
+    }
+
 }

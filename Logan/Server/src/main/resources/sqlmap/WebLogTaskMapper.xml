@@ -4,6 +4,7 @@
 <mapper namespace="com.meituan.logan.web.mapper.WebLogTaskMapper">
     <resultMap id="resultMap" type="com.meituan.logan.web.dto.WebLogTaskDTO">
         <id column="id" jdbcType="BIGINT" property="taskId"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
         <result column="device_id" jdbcType="VARCHAR" property="deviceId"/>
         <result column="web_source" jdbcType="VARCHAR" property="webSource"/>
         <result column="environment" jdbcType="VARCHAR" property="environment"/>
@@ -18,8 +19,8 @@
 
     <insert id="insert" parameterType="map" useGeneratedKeys="true" keyColumn="id"
             keyProperty="taskId">
-      INSERT INTO web_task (device_id,web_source,environment,page_num,content,add_time,log_date,status,custom_report_info)
-      VALUES (#{task.deviceId},#{task.webSource},#{task.environment},#{task.pageNum},#{task.content},#{task.addTime},#{task.logDate},#{task.status},#{task.customReportInfo})
+      INSERT INTO web_task (app_id,device_id,web_source,environment,page_num,content,add_time,log_date,status,custom_report_info)
+      VALUES (#{task.appId},#{task.deviceId},#{task.webSource},#{task.environment},#{task.pageNum},#{task.content},#{task.addTime},#{task.logDate},#{task.status},#{task.customReportInfo})
     </insert>
 
     <update id="updateContent" parameterType="map">
@@ -34,6 +35,9 @@
     <select id="query" parameterType="map" resultMap="resultMap">
         SELECT * FROM web_task
         WHERE  add_time between #{beginTime} and #{endTime} and device_id=#{deviceId}
+        <if test="appId != null and appId != ''">
+            AND app_id = #{appId}
+        </if>
     </select>
 
     <delete id="deleteByAddTime" parameterType="map">
@@ -58,7 +62,7 @@
     </select>
 
     <select id="queryByRange" parameterType="map" resultMap="resultMap">
-        select id,device_id,web_source,environment,page_num,add_time,log_date,custom_report_info,status,update_time
+        select id,app_id,device_id,web_source,environment,page_num,add_time,log_date,custom_report_info,status,update_time
         from web_task where id between #{minId} and #{maxId}
     </select>
 </mapper>

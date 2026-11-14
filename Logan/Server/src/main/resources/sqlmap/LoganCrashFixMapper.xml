@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganCrashFixMapper">
+    <resultMap id="fixMap" type="com.meituan.logan.web.dto.LoganCrashFixDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="issue_id" jdbcType="BIGINT" property="issueId"/>
+        <result column="fingerprint" jdbcType="VARCHAR" property="fingerprint"/>
+        <result column="kind" jdbcType="VARCHAR" property="kind"/>
+        <result column="action" jdbcType="VARCHAR" property="action"/>
+        <result column="status" jdbcType="VARCHAR" property="status"/>
+        <result column="fixer" jdbcType="VARCHAR" property="fixer"/>
+        <result column="root_cause" jdbcType="VARCHAR" property="rootCause"/>
+        <result column="detail" jdbcType="VARCHAR" property="detail"/>
+        <result column="files" jdbcType="VARCHAR" property="files"/>
+        <result column="commit_url" jdbcType="VARCHAR" property="commitUrl"/>
+        <result column="pr_url" jdbcType="VARCHAR" property="prUrl"/>
+        <result column="source" jdbcType="VARCHAR" property="source"/>
+        <result column="client" jdbcType="VARCHAR" property="client"/>
+        <result column="evidence_hash" jdbcType="VARCHAR" property="evidenceHash"/>
+        <result column="report_hash" jdbcType="VARCHAR" property="reportHash"/>
+        <result column="fixed_at" jdbcType="BIGINT" property="fixedAt"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+    </resultMap>
+
+    <insert id="insertIgnore" parameterType="com.meituan.logan.web.dto.LoganCrashFixDTO" useGeneratedKeys="true" keyColumn="id" keyProperty="id">
+      INSERT IGNORE INTO logan_crash_fix
+      (app_id,issue_id,fingerprint,kind,action,status,fixer,root_cause,detail,files,commit_url,pr_url,source,client,evidence_hash,report_hash,fixed_at,add_time)
+      VALUES (#{appId},#{issueId},#{fingerprint},#{kind},#{action},#{status},#{fixer},#{rootCause},#{detail},#{files},#{commitUrl},#{prUrl},#{source},#{client},#{evidenceHash},#{reportHash},#{fixedAt},#{addTime})
+    </insert>
+
+    <select id="queryByFingerprint" parameterType="map" resultMap="fixMap">
+      SELECT * FROM logan_crash_fix
+      WHERE app_id = #{appId} AND fingerprint = #{fingerprint}
+      ORDER BY COALESCE(fixed_at, add_time) DESC LIMIT 0,#{limit}
+    </select>
+
+    <select id="queryByIssue" parameterType="map" resultMap="fixMap">
+      SELECT * FROM logan_crash_fix WHERE issue_id = #{issueId} ORDER BY COALESCE(fixed_at, add_time) DESC LIMIT 0,#{limit}
+    </select>
+
+    <select id="selectById" parameterType="java.lang.Long" resultMap="fixMap">
+      SELECT * FROM logan_crash_fix WHERE id = #{id}
+    </select>
+
+    <select id="queryByFilter" parameterType="map" resultMap="fixMap">
+      SELECT * FROM logan_crash_fix
+      <where>
+        <if test="q.appId != null and q.appId != ''">AND app_id = #{q.appId}</if>
+        <if test="q.fingerprint != null and q.fingerprint != ''">AND fingerprint = #{q.fingerprint}</if>
+        <if test="q.kind != null and q.kind != ''">AND kind = #{q.kind}</if>
+        <if test="q.status != null and q.status != ''">AND status = #{q.status}</if>
+        <if test="q.fixer != null and q.fixer != ''">AND fixer LIKE CONCAT('%',#{q.fixer},'%')</if>
+        <if test="q.beginTime != null">AND COALESCE(fixed_at, add_time) &gt;= #{q.beginTime}</if>
+        <if test="q.endTime != null">AND COALESCE(fixed_at, add_time) &lt;= #{q.endTime}</if>
+      </where>
+      ORDER BY COALESCE(fixed_at, add_time) DESC
+      <if test="q.limit != null">LIMIT 0,#{q.limit}</if>
+    </select>
+</mapper>

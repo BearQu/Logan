@@ -74,12 +74,12 @@ public class WebLogController {
      */
     @GetMapping("/search.json")
     @ResponseBody
-    public LoganResponse<List<WebLogTaskDTO>> search(long beginTime,long endTime, String deviceId) {
+    public LoganResponse<List<WebLogTaskDTO>> search(long beginTime,long endTime, String deviceId, String appId) {
         endTime = endTime + ONE_DAY;
         if (beginTime <= 0 || StringUtils.isEmpty(deviceId)) {
             return LoganResponse.badParam("invalid param");
         }
-        List<WebLogTaskDTO> list = webTaskService.search(beginTime, endTime, deviceId);
+        List<WebLogTaskDTO> list = webTaskService.search(beginTime, endTime, deviceId, appId);
         List<WebLogTaskDTO> result = reduce(groupByLogDate(list));
         return LoganResponse.success(result);
     }
@@ -90,8 +90,8 @@ public class WebLogController {
      */
     @GetMapping("/latest.json")
     @ResponseBody
-    public LoganResponse<List<WebLogTaskDTO>> latestReport() {
-        List<WebLogTaskDTO> taskDTOS = webTaskService.latest(200);
+    public LoganResponse<List<WebLogTaskDTO>> latestReport(String appId) {
+        List<WebLogTaskDTO> taskDTOS = webTaskService.latest(400, appId);
         ArrayListMultimap<Long, WebLogTaskDTO> multimap = groupByLogDate(taskDTOS);
         List<WebLogTaskDTO> result = new ArrayList<>();
         for (Long logDate : multimap.keySet()) {

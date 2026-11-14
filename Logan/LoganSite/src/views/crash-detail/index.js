@@ -9,6 +9,8 @@ import {
   fetchCrashIssueDetailApi, fetchCrashInstancesApi, fetchSingleCrashApi, updateCrashIssueStatusApi,
 } from "../../common/api";
 import { KIND_META, SEVERITY_META, STATUS_META, parseJsonArrayMaybe } from "../../consts/crash";
+import CrashTimeline from "./components/CrashTimeline";
+import FixHistory from "./components/FixHistory";
 
 /** 崩溃详情（仿 Bugly）：LLM 定性 + 基本信息 + 崩溃实例列表 + 堆栈正文。 */
 export class CrashDetail extends Component {
@@ -19,6 +21,8 @@ export class CrashDetail extends Component {
     loading: true,
     activeContent: null,
     activeTitle: "",
+    // 证据包/修复上报后的刷新计数，传给子卡做重载信号
+    reloadNonce: 0,
   };
 
   componentDidMount() {
@@ -85,6 +89,9 @@ export class CrashDetail extends Component {
             {issue.llmSeverity || "待分析"}
           </span>
           <span style={{ float: "right" }}>
+            <a href={`${window.API_BASE_URL || "/logan-web"}/logan/crash/evidence.download?issueId=${issue.id}&before=180&after=15`} target="_blank" rel="noreferrer">
+              <Button size="small" icon="download" style={{ marginRight: 8 }}>导出证据包</Button>
+            </a>
             <Button size="small" onClick={() => this.markStatus(1)} style={{ marginRight: 8 }}>处理中</Button>
             <Button size="small" type="primary" onClick={() => this.markStatus(2)} style={{ marginRight: 8 }}>标记已修复</Button>
             <Button size="small" onClick={() => this.markStatus(3)}>忽略</Button>
@@ -125,6 +132,11 @@ export class CrashDetail extends Component {
                 ]}
               />
             </Card>
+
+            <CrashTimeline
+              issue={issue}
+              reloadNonce={this.state.reloadNonce}
+            />
           </Col>
 
           <Col span={8}>
@@ -149,6 +161,12 @@ export class CrashDetail extends Component {
                 </div>
               ))}
             </Card>
+
+            <FixHistory
+              issue={issue}
+              reloadNonce={this.state.reloadNonce}
+              onReported={() => { this.setState({ reloadNonce: this.state.reloadNonce + 1 }); this.load(); }}
+            />
           </Col>
         </Row>
 

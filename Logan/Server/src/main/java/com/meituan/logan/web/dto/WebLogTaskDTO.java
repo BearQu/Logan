@@ -15,6 +15,9 @@ import java.util.Date;
 public class WebLogTaskDTO implements Comparable<WebLogTaskDTO> {
     private long taskId;
 
+    /** 应用标识（多应用隔离） */
+    private String appId;
+
     /**
      * 设备标示
      */

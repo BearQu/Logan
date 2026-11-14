@@ -15,7 +15,7 @@ public interface WebLogTaskMapper {
             @Param("pageNum") int pageNum);
 
     List<WebLogTaskDTO> query(@Param("beginTime") long beginTime, @Param("endTime") long endTime,
-            @Param("deviceId") String deviceId);
+            @Param("deviceId") String deviceId, @Param("appId") String appId);
 
     void deleteByAddTime(@Param("addTime") long addTime);
 

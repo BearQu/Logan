@@ -1,6 +1,7 @@
 package com.meituan.logan.web.controller;
 
 import com.meituan.logan.web.model.WebLogTaskModel;
+import com.meituan.logan.web.util.HeaderUtil;
 import com.meituan.logan.web.model.response.LoganResponse;
 import com.meituan.logan.web.parser.WebLogParser;
 import com.meituan.logan.web.service.WebTaskService;
@@ -22,6 +23,8 @@ public class WebLogUploadController {
 
     @Resource
     private WebTaskService webTaskService;
+    @Resource
+    private com.meituan.logan.web.service.LoganAppService appService;
 
     /**
      * 接收并存储H5端上报的日志
@@ -31,10 +34,22 @@ public class WebLogUploadController {
      */
     @PostMapping("/upload.json")
     @ResponseBody
-    public LoganResponse<Boolean> receiveWebLog(@RequestBody WebLogTaskModel taskModel) {
+    public LoganResponse<Boolean> receiveWebLog(@RequestBody WebLogTaskModel taskModel,
+            javax.servlet.http.HttpServletRequest request) {
         if (taskModel == null || !taskModel.isValid()) {
             return LoganResponse.badParam("invalid params");
         }
+        if (org.apache.commons.lang3.StringUtils.isBlank(taskModel.getAppId())) {
+            taskModel.setAppId(request.getHeader("appId"));
+        }
+        if (org.apache.commons.lang3.StringUtils.isBlank(taskModel.getAppName())) {
+            taskModel.setAppName(HeaderUtil.utf8(request.getHeader("appName")));
+        }
+        if (org.apache.commons.lang3.StringUtils.isBlank(taskModel.getAppId())) {
+            taskModel.setAppId("unknown");
+        }
+        appService.register(taskModel.getAppId(), taskModel.getAppName(), 1, null, null,
+                taskModel.getDeviceId(), "auto_client");
         taskModel.setContent(WebLogParser.parse(taskModel.getLogArray()));
         if (webTaskService.saveTask(taskModel)) {
             return LoganResponse.success(true);

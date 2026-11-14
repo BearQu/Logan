@@ -4,6 +4,7 @@ import { connect } from "react-redux";
 import { Layout, Menu, Icon } from "antd";
 import { isEqual } from "lodash";
 import image from "./new_logan_logo_white.png";
+import AppSwitcher from "../AppSwitcher/AppSwitcher";
 import "./style.scss";
 
 class Sider extends Component {
@@ -17,6 +18,7 @@ class Sider extends Component {
     if (pathname === "/native-list" || pathname === "/native-log-detail") return ["0"];
     if (pathname === "/web-list" || pathname === "/web-detail") return ["1"];
     if (pathname === "/crash-list" || pathname === "/crash-detail") return ["2"];
+    if (pathname === "/app-list") return ["3"];
     return ["0"];
   }
 
@@ -38,8 +40,13 @@ class Sider extends Component {
               <Icon type="bug" />
               <span>崩溃分析</span>
             </Menu.Item>
+            <Menu.Item key="3">
+              <Icon type="appstore" />
+              <span>应用清单</span>
+            </Menu.Item>
           </Menu>
         </div>
+        <AppSwitcher />
       </Layout.Sider>
     );
   }
@@ -70,25 +77,8 @@ class Sider extends Component {
   }
 
 
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    const {pathname} = this.props;
-    if (pathname === "/native-list" || pathname === "/native-log-detail") {
-      this.setState({
-        selectedKeys: ["0"]
-      });
-    } else if (pathname === "/web-list" || pathname === "/web-detail") {
-      this.setState({
-        selectedKeys: ["1"]
-      });
-    } else if (pathname === "/crash-list" || pathname === "/crash-detail") {
-      this.setState({
-        selectedKeys: ["2"]
-      });
-    } else {
-      this.setState({
-        selectedKeys: ["0"]
-      });
-    }
+  componentDidUpdate() {
+    this.selectedKeysFromPathname();
   }
 
   handleMenuClick = ({ key }) => {
@@ -106,6 +96,11 @@ class Sider extends Component {
       window.location.hash = "#/crash-list";
       this.setState({
         selectedKeys: ["2"]
+      });
+    } else if (key === "3") {
+      window.location.hash = "#/app-list";
+      this.setState({
+        selectedKeys: ["3"]
       });
     } else {
       window.location.hash = "#/native-list";

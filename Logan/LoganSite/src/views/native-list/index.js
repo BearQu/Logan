@@ -5,10 +5,15 @@ import { parse } from "qs";
 import moment from "moment";
 import ListPage from "../components/list-page/index";
 import { updateFilterConditions, fetchTasks, fetchInitData } from "./redux/action";
-import {message} from "antd";
+import { message } from "antd";
+import { subscribe as subscribeApp, ensureApp, getCurrentAppId } from "../../common/currentApp";
 
 
 export class NativeList extends Component {
+
+  componentWillUnmount() {
+    if (this._unsubApp) { this._unsubApp(); }
+  }
 
   componentDidCatch(error, errorInfo) {
     message.error("页面异常！");
@@ -17,6 +22,16 @@ export class NativeList extends Component {
 
   componentDidMount() {
     const { updateFilterConditions, fetchTasks, fetchInitData } = this.props;
+    // 顶栏切换应用后自动按新 appId 重新拉列表
+    ensureApp().then(() => fetchInitData());
+    this._unsubApp = subscribeApp(() => {
+      const { filterConditions } = this.props;
+      if (filterConditions && filterConditions.deviceId) {
+        fetchTasks({ ...filterConditions });
+      } else {
+        fetchInitData();
+      }
+    });
 
     let params = {};
     if (this.props.location) {
