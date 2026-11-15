@@ -68,14 +68,24 @@ class AppList extends Component {
       if (err) { return; }
       this.setState({ submitting: true });
       try {
-        const body = { appId: (editing && editing.appId) || values.appId, appName: values.appName, source: "manual" };
+        const appId = (editing && editing.appId) || String(values.appId || "").trim();
+        const body = { appId: appId, appName: values.appName, source: "manual" };
         if (values.platform) { body.platform = Number(values.platform); }
         if (this.state.iconFile) {
           const dataUrl = this.state.iconPreview || "";
           const m = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
           if (m) { body.mime = m[1]; body.iconBase64 = m[2]; }
         }
-        await saveAppApi(body);
+        // 治理规则：新建只能走 create.json（save.json 只更新已登记应用），补图标再走 save.json
+        if (!editing) {
+          if (!body.platform) { throw new Error("请选择所属端"); }
+          await createAppApi({ appId: appId, appName: values.appName, platform: Number(body.platform) });
+          if (body.iconBase64) {
+            await saveAppApi({ appId: appId, source: "manual", mime: body.mime, iconBase64: body.iconBase64 });
+          }
+        } else {
+          await saveAppApi(body);
+        }
         message.success("已保存");
         this.closeEdit();
         this.setState({ submitting: false });

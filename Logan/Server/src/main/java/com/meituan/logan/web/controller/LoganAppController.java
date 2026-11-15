@@ -75,6 +75,9 @@ public class LoganAppController {
                     pick(body, request, "buildVersion"),
                     pick(body, request, "deviceId"),
                     pick(body, request, "source"));
+            if (dto == null) {
+                return LoganResponse.badParam(com.meituan.logan.web.util.AppGuard.MSG);
+            }
             return LoganResponse.success(dto);
         } catch (Exception e) {
             LOGGER.error("save app profile failed: " + e.getMessage());

@@ -32,26 +32,22 @@ public class LoganAppServiceImpl implements LoganAppService {
         }
         try {
             long now = System.currentTimeMillis();
-            LoganAppDTO dto = new LoganAppDTO();
-            dto.setAppId(appId.trim());
-            dto.setAppName(cleanName(appName));
-            dto.setPlatform(platform == null || platform < 1 || platform > 3 ? 1 : platform);
-            dto.setLatestAppVersion(trim(appVersion, 64));
-            dto.setLatestBuildVersion(trim(buildVersion, 64));
-            dto.setLastDeviceId(trim(deviceId, 128));
-            dto.setSource(StringUtils.isBlank(source) ? "auto_client" : source);
-            dto.setAddTime(now);
-            dto.setLastReportTime(now);
-            if (appMapper.insertIgnore(dto) <= 0) {
-                // touch 传原始 platform（可为 null）：不带 platform 的 save 不得把端打回 Android
-                appMapper.touch(dto.getAppId(), platform == null || platform < 1 || platform > 3 ? null : platform,
-                        dto.getLatestAppVersion(), dto.getLatestBuildVersion(), dto.getLastDeviceId(), now);
+            // 治理规则（用户拍板）：应用必须先在平台创建，这里只刷新已登记应用的事实字段，
+            // 不再 INSERT 自动登记；manual 应用的所属端只认控制台写入。
+            LoganAppDTO exist = appMapper.selectByAppId(appId.trim());
+            if (exist == null) {
+                return;
             }
+            Integer effPlatform = platform == null || platform < 1 || platform > 3 ? null : platform;
+            if ("manual".equals(exist.getSource())) {
+                effPlatform = null;
+            }
+            appMapper.touch(appId.trim(), effPlatform, trim(appVersion, 64), trim(buildVersion, 64),
+                    trim(deviceId, 128), now);
         } catch (Exception e) {
-            LOGGER.warn("app register failed for " + appId + ": " + e.getMessage());
+            LOGGER.warn("app touch failed for " + appId + ": " + e.getMessage());
         }
     }
-
     @Override
     public LoganAppDTO reportProfile(String appId, String appName, String iconBase64, String mime,
             Integer platform, String appVersion, String buildVersion, String deviceId, String source) {
@@ -59,13 +55,24 @@ public class LoganAppServiceImpl implements LoganAppService {
             return null;
         }
         String src = StringUtils.isBlank(source) ? "auto_client" : source.trim();
-        // 已存在则不覆盖 source（人工登记过的保持 manual），新出现的应用才落来源
+        // 治理规则（用户拍板）：save.json 只更新已登记应用，不再替客户端建号；
+        // 建号唯一入口是控制台 create.json（或清单页「创建应用」）。
         LoganAppDTO exist0 = appMapper.selectByAppId(appId.trim());
-        register(appId, appName, platform, appVersion, buildVersion, deviceId,
-                exist0 == null ? src : exist0.getSource());
+        if (exist0 == null) {
+            return null;
+        }
+        // 事实字段（版本/设备/时间）照常刷新；source 保持登记时的来源
+        register(appId, appName, platform, appVersion, buildVersion, deviceId, exist0.getSource());
+        // 人工登记优先：已 manual 登记的应用，其显示名/所属端/图标只认控制台（source=manual）的写入，
+        // 客户端上报（auto_client/auto_crash）不再覆盖；版本号、设备、上报时间等事实字段照常刷新。
+        boolean locked = exist0 != null && "manual".equals(exist0.getSource()) && !"manual".equals(src);
+        String effAppName = locked ? null : appName;
+        Integer effPlatform = locked ? null : platform;
         String iconPath = null;
         String iconHash = null;
-        if (StringUtils.isNotBlank(iconBase64)) {
+        // 人工登记的应用若已有图标，客户端不再替换；若控制台建号时没挂图标，允许客户端补一次
+        boolean keepIcon = locked && StringUtils.isNotBlank(exist0.getIconHash());
+        if (StringUtils.isNotBlank(iconBase64) && !keepIcon) {
             LoganAppDTO exist = appMapper.selectByAppId(appId);
             String currentHash = exist == null ? null : exist.getIconHash();
             AppFileUtil.IconWrite write = AppFileUtil.writeIcon(iconBase64, appId, mime);
@@ -78,9 +85,11 @@ public class LoganAppServiceImpl implements LoganAppService {
                 }
             }
         }
-        if (StringUtils.isNotBlank(appName) || iconPath != null) {
-            appMapper.updateProfile(appId, cleanName(appName), iconPath, iconHash, platform,
-                    exist0 == null ? src : null);
+        // 控制台（source=manual）的编辑要把应用升级为人工登记，之后客户端上报就不再覆盖显示名；
+        // 客户端自身的上报永远不动 source。
+        String newSource = (exist0 == null || "manual".equals(src)) ? src : null;
+        if (StringUtils.isNotBlank(effAppName) || iconPath != null || newSource != null) {
+            appMapper.updateProfile(appId, cleanName(effAppName), iconPath, iconHash, effPlatform, newSource);
         }
         return appMapper.selectByAppId(appId);
     }

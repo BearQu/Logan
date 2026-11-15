@@ -45,10 +45,11 @@ public class WebLogUploadController {
         if (org.apache.commons.lang3.StringUtils.isBlank(taskModel.getAppName())) {
             taskModel.setAppName(HeaderUtil.utf8(request.getHeader("appName")));
         }
-        if (org.apache.commons.lang3.StringUtils.isBlank(taskModel.getAppId())) {
-            taskModel.setAppId("unknown");
+        // 治理规则（用户拍板）：未登记 appId 直接拒收，不再自动登记
+        if (!com.meituan.logan.web.util.AppGuard.registered(appService, taskModel.getAppId())) {
+            return LoganResponse.badParam(com.meituan.logan.web.util.AppGuard.MSG);
         }
-        appService.register(taskModel.getAppId(), taskModel.getAppName(), 1, null, null,
+                appService.register(taskModel.getAppId(), taskModel.getAppName(), 1, null, null,
                 taskModel.getDeviceId(), "auto_client");
         taskModel.setContent(WebLogParser.parse(taskModel.getLogArray()));
         if (webTaskService.saveTask(taskModel)) {

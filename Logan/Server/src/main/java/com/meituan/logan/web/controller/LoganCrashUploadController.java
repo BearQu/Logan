@@ -32,6 +32,9 @@ public class LoganCrashUploadController {
     @Resource
     private LoganCrashService crashService;
 
+    @Resource
+    private com.meituan.logan.web.service.LoganAppService appService;
+
     @PostMapping("/crash/upload.json")
     @ResponseBody
     public LoganResponse<String> upload(HttpServletRequest request) {
@@ -41,6 +44,17 @@ public class LoganCrashUploadController {
                 return LoganResponse.badParam("empty body");
             }
             String json = new String(maybeGunzip(request, raw), "UTF-8");
+            // 治理规则（用户拍板）：崩溃上报同样要求 appId 已在平台登记，未登记直接拒收
+            String appId = null;
+            try {
+                com.alibaba.fastjson.JSONObject o = com.alibaba.fastjson.JSONObject.parseObject(json);
+                appId = o == null ? null : o.getString("appId");
+            } catch (Exception ignore) {
+                // 交给 ingest 统一按非法封包处理
+            }
+            if (!com.meituan.logan.web.util.AppGuard.registered(appService, appId)) {
+                return LoganResponse.badParam(com.meituan.logan.web.util.AppGuard.MSG);
+            }
             int r = crashService.ingest(json);
             if (r < 0) {
                 return LoganResponse.badParam("invalid crash envelope");
