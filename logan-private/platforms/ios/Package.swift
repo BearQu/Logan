@@ -53,6 +53,9 @@ let package = Package(
             cSettings: [
                 .headerSearchPath("../../ThirdParty/Logan"),
                 .headerSearchPath("../../ThirdParty/Clogan"),
+            ],
+            linkerSettings: [
+                .linkedFramework("Security")
             ]
         ),
     ]
