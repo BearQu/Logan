@@ -53,7 +53,8 @@ class AppList extends Component {
 
   submit = (e) => {
     e.preventDefault();
-    const { form, editing } = this.props;
+    const { form } = this.props;
+    const { editing } = this.state;
     form.validateFields(async (err, values) => {
       if (err) { return; }
       this.setState({ submitting: true });
