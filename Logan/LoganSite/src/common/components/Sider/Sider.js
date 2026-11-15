@@ -19,6 +19,7 @@ class Sider extends Component {
     if (pathname === "/web-list" || pathname === "/web-detail") return ["1"];
     if (pathname === "/crash-list" || pathname === "/crash-detail") return ["2"];
     if (pathname === "/app-list") return ["3"];
+    if (pathname === "/device-list") return ["4"];
     return ["0"];
   }
 
@@ -43,6 +44,10 @@ class Sider extends Component {
             <Menu.Item key="3">
               <Icon type="appstore" />
               <span>应用清单</span>
+            </Menu.Item>
+            <Menu.Item key="4">
+              <Icon type="desktop" />
+              <span>设备清单</span>
             </Menu.Item>
           </Menu>
         </div>
@@ -101,6 +106,11 @@ class Sider extends Component {
       window.location.hash = "#/app-list";
       this.setState({
         selectedKeys: ["3"]
+      });
+    } else if (key === "4") {
+      window.location.hash = "#/device-list";
+      this.setState({
+        selectedKeys: ["4"]
       });
     } else {
       window.location.hash = "#/native-list";

@@ -263,3 +263,20 @@ export function fetchCrashFixesApi(params) {
 export function reportCrashFixApi(body) {
   return instance.post('/logan/crash/fix/report.json', body);
 }
+
+// ---- 设备清单与「主动拉日志」命令通道 ----
+export function fetchDeviceListApi(params) {
+  return instance.get("/logan/device/list.json", { params });
+}
+
+export function dispatchDeviceCommandApi(body) {
+  return instance.post("/logan/device/command/dispatch.json", body);
+}
+
+export function cancelDeviceCommandApi(body) {
+  return instance.post("/logan/device/command/cancel.json", body);
+}
+
+export function fetchDeviceCommandsApi(params) {
+  return instance.get("/logan/device/command/list.json", { params });
+}

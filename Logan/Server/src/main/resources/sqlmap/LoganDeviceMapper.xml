@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganDeviceMapper">
+    <resultMap id="cmdMap" type="com.meituan.logan.web.dto.LoganDeviceCommandDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="device_id" jdbcType="VARCHAR" property="deviceId"/>
+        <result column="action" jdbcType="VARCHAR" property="action"/>
+        <result column="param" jdbcType="VARCHAR" property="param"/>
+        <result column="status" jdbcType="VARCHAR" property="status"/>
+        <result column="operator" jdbcType="VARCHAR" property="operator"/>
+        <result column="note" jdbcType="VARCHAR" property="note"/>
+        <result column="result_note" jdbcType="VARCHAR" property="resultNote"/>
+        <result column="deliver_count" jdbcType="INTEGER" property="deliverCount"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+        <result column="delivered_time" jdbcType="BIGINT" property="deliveredTime"/>
+        <result column="ack_time" jdbcType="BIGINT" property="ackTime"/>
+        <result column="expire_time" jdbcType="BIGINT" property="expireTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+    </resultMap>
+
+    <resultMap id="deviceMap" type="com.meituan.logan.web.dto.LoganDeviceViewDTO">
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="device_id" jdbcType="VARCHAR" property="deviceId"/>
+        <result column="platform" jdbcType="INTEGER" property="platform"/>
+        <result column="app_version" jdbcType="VARCHAR" property="appVersion"/>
+        <result column="build_version" jdbcType="VARCHAR" property="buildVersion"/>
+        <result column="brand" jdbcType="VARCHAR" property="brand"/>
+        <result column="model" jdbcType="VARCHAR" property="model"/>
+        <result column="sdk_int" jdbcType="INTEGER" property="sdkInt"/>
+        <result column="release_ver" jdbcType="VARCHAR" property="releaseVer"/>
+        <result column="log_count" jdbcType="INTEGER" property="logCount"/>
+        <result column="last_log_time" jdbcType="BIGINT" property="lastLogTime"/>
+        <result column="crash_count" jdbcType="INTEGER" property="crashCount"/>
+        <result column="last_crash_time" jdbcType="BIGINT" property="lastCrashTime"/>
+        <result column="last_poll_time" jdbcType="BIGINT" property="lastPollTime"/>
+        <result column="poll_count" jdbcType="BIGINT" property="pollCount"/>
+        <result column="pending_commands" jdbcType="INTEGER" property="pendingCommands"/>
+    </resultMap>
+
+    <insert id="insertCommand" parameterType="com.meituan.logan.web.dto.LoganDeviceCommandDTO"
+            useGeneratedKeys="true" keyColumn="id" keyProperty="id">
+        INSERT INTO logan_device_command
+        (app_id, device_id, action, param, status, operator, note, result_note, deliver_count, add_time, expire_time)
+        VALUES
+        (#{appId}, #{deviceId}, #{action}, #{param}, #{status}, #{operator}, #{note}, #{resultNote}, #{deliverCount}, #{addTime}, #{expireTime})
+    </insert>
+
+    <select id="selectCommandById" resultMap="cmdMap">
+        SELECT * FROM logan_device_command WHERE id = #{id}
+    </select>
+
+    <select id="selectPendingCommands" resultMap="cmdMap">
+        SELECT * FROM logan_device_command
+        WHERE app_id = #{appId} AND device_id = #{deviceId} AND status = "pending"
+          AND expire_time &gt; #{now}
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="expirePending">
+        UPDATE logan_device_command SET status = "expired"
+        WHERE status = "pending" AND expire_time &lt;= #{now}
+    </update>
+
+    <update id="markDelivered">
+        UPDATE logan_device_command SET status = "delivered", delivered_time = #{now},
+        deliver_count = deliver_count + 1
+        WHERE id = #{id} AND status = "pending"
+    </update>
+
+    <update id="markAck">
+        UPDATE logan_device_command SET status = #{status}, ack_time = #{now}
+        <if test="resultNote != null">, result_note = #{resultNote}</if>
+        WHERE id = #{id} AND status IN ("pending","delivered")
+    </update>
+
+    <update id="extendExpire">
+        UPDATE logan_device_command SET expire_time = #{expireTime}, status = "pending"
+        WHERE id = #{id} AND status IN ("pending","delivered")
+    </update>
+
+    <update id="markCancelled">
+        UPDATE logan_device_command SET status = "cancelled"
+        WHERE id = #{id} AND status IN ("pending","delivered")
+    </update>
+
+    <update id="markLost">
+        UPDATE logan_device_command SET status = "lost", result_note = "delivered but never acked"
+        WHERE status = "delivered" AND delivered_time &lt; #{before}
+    </update>
+
+    <select id="listCommands" resultMap="cmdMap">
+        SELECT * FROM logan_device_command
+        <where>
+            <if test="appId != null and appId != ''">AND app_id = #{appId}</if>
+            <if test="deviceId != null and deviceId != ''">AND device_id = #{deviceId}</if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countActiveCommands" resultType="int">
+        SELECT COUNT(*) FROM logan_device_command
+        WHERE app_id = #{appId} AND device_id = #{deviceId} AND status IN ("pending","delivered")
+    </select>
+
+    <insert id="upsertPoll">
+        INSERT INTO logan_device_poll
+        (app_id, device_id, platform, app_version, build_version, sdk_version, last_poll_time, poll_count, add_time)
+        VALUES (#{appId}, #{deviceId}, #{platform}, #{appVersion}, #{buildVersion}, #{sdkVersion}, #{now}, 1, #{addTime})
+        ON DUPLICATE KEY UPDATE
+        last_poll_time = #{now}, poll_count = poll_count + 1, platform = #{platform},
+        app_version = #{appVersion}, build_version = #{buildVersion}, sdk_version = #{sdkVersion}
+    </insert>
+
+    <sql id="deviceBase">
+        FROM (
+            SELECT app_id, device_id FROM logan_task WHERE app_id = #{appId} AND device_id &lt;&gt; "" GROUP BY app_id, device_id
+            UNION
+            SELECT app_id, device_id FROM logan_crash WHERE app_id = #{appId} AND device_id &lt;&gt; "" GROUP BY app_id, device_id
+        ) d
+        LEFT JOIN (
+            SELECT app_id, device_id, MAX(platform) AS platform, MAX(crash_time) AS last_crash_time, COUNT(*) AS crash_count,
+            SUBSTRING_INDEX(GROUP_CONCAT(brand ORDER BY crash_time DESC SEPARATOR "||"), "||", 1) AS brand,
+            SUBSTRING_INDEX(GROUP_CONCAT(model ORDER BY crash_time DESC SEPARATOR "||"), "||", 1) AS model,
+            MAX(sdk_int) AS sdk_int,
+            SUBSTRING_INDEX(GROUP_CONCAT(release_ver ORDER BY crash_time DESC SEPARATOR "||"), "||", 1) AS release_ver
+            FROM logan_crash WHERE app_id = #{appId} GROUP BY app_id, device_id
+        ) c ON c.app_id = d.app_id AND c.device_id = d.device_id
+        LEFT JOIN (
+            SELECT app_id, device_id, COUNT(*) AS log_count, MAX(add_time) AS last_log_time, MAX(platform) AS platform
+            FROM logan_task WHERE app_id = #{appId} GROUP BY app_id, device_id
+        ) tk ON tk.app_id = d.app_id AND tk.device_id = d.device_id
+        LEFT JOIN logan_device_poll p ON p.app_id = d.app_id AND p.device_id = d.device_id
+        LEFT JOIN (
+            SELECT app_id, device_id, COUNT(*) AS pending_commands FROM logan_device_command
+            WHERE app_id = #{appId} AND status IN ("pending","delivered") GROUP BY app_id, device_id
+        ) pc ON pc.app_id = d.app_id AND pc.device_id = d.device_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+            AND (d.device_id LIKE CONCAT("%", #{keyword}, "%")
+                 OR c.model LIKE CONCAT("%", #{keyword}, "%")
+                 OR c.brand LIKE CONCAT("%", #{keyword}, "%"))
+            </if>
+        </where>
+    </sql>
+
+    <select id="listDevices" resultMap="deviceMap">
+        SELECT d.app_id, d.device_id,
+        COALESCE(c.platform, tk.platform, 0) AS platform,
+        (SELECT t.app_version FROM logan_task t WHERE t.app_id = d.app_id AND t.device_id = d.device_id ORDER BY t.add_time DESC LIMIT 1) AS app_version,
+        (SELECT t.build_version FROM logan_task t WHERE t.app_id = d.app_id AND t.device_id = d.device_id ORDER BY t.add_time DESC LIMIT 1) AS build_version,
+        c.brand, c.model, c.sdk_int, c.release_ver,
+        COALESCE(tk.log_count, 0) AS log_count, tk.last_log_time,
+        COALESCE(c.crash_count, 0) AS crash_count, c.last_crash_time,
+        p.last_poll_time, COALESCE(p.poll_count, 0) AS poll_count,
+        COALESCE(pc.pending_commands, 0) AS pending_commands
+        <include refid="deviceBase"/>
+        ORDER BY GREATEST(COALESCE(p.last_poll_time, 0), COALESCE(tk.last_log_time, 0), COALESCE(c.last_crash_time, 0)) DESC,
+        d.device_id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countDevices" resultType="int">
+        SELECT COUNT(*) <include refid="deviceBase"/>
+    </select>
+
+</mapper>
