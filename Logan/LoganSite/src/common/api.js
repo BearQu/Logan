@@ -232,6 +232,10 @@ export function fetchAppListApi() {
   return instance.get('/logan/app/list.json');
 }
 
+export function createAppApi(body) {
+  return instance.post("/logan/app/create.json", body);
+}
+
 export function saveAppApi(body) {
   return instance.post("/logan/app/save.json", body);
 }

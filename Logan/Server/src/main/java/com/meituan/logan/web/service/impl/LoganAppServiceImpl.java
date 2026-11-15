@@ -35,7 +35,7 @@ public class LoganAppServiceImpl implements LoganAppService {
             LoganAppDTO dto = new LoganAppDTO();
             dto.setAppId(appId.trim());
             dto.setAppName(cleanName(appName));
-            dto.setPlatform(platform == null || platform <= 0 ? 1 : platform);
+            dto.setPlatform(platform == null || platform < 1 || platform > 3 ? 1 : platform);
             dto.setLatestAppVersion(trim(appVersion, 64));
             dto.setLatestBuildVersion(trim(buildVersion, 64));
             dto.setLastDeviceId(trim(deviceId, 128));
@@ -43,8 +43,9 @@ public class LoganAppServiceImpl implements LoganAppService {
             dto.setAddTime(now);
             dto.setLastReportTime(now);
             if (appMapper.insertIgnore(dto) <= 0) {
-                appMapper.touch(dto.getAppId(), dto.getPlatform(), dto.getLatestAppVersion(),
-                        dto.getLatestBuildVersion(), dto.getLastDeviceId(), now);
+                // touch 传原始 platform（可为 null）：不带 platform 的 save 不得把端打回 Android
+                appMapper.touch(dto.getAppId(), platform == null || platform < 1 || platform > 3 ? null : platform,
+                        dto.getLatestAppVersion(), dto.getLatestBuildVersion(), dto.getLastDeviceId(), now);
             }
         } catch (Exception e) {
             LOGGER.warn("app register failed for " + appId + ": " + e.getMessage());
@@ -82,6 +83,27 @@ public class LoganAppServiceImpl implements LoganAppService {
                     exist0 == null ? src : null);
         }
         return appMapper.selectByAppId(appId);
+    }
+
+    @Override
+    public LoganAppDTO createApp(String appId, String appName, Integer platform) {
+        if (StringUtils.isBlank(appId) || StringUtils.isBlank(appName)) {
+            return null;
+        }
+        String id = appId.trim();
+        long now = System.currentTimeMillis();
+        LoganAppDTO dto = new LoganAppDTO();
+        dto.setAppId(id);
+        dto.setAppName(cleanName(appName));
+        dto.setPlatform(platform == null || platform < 1 || platform > 3 ? 1 : platform);
+        dto.setSource("manual");
+        dto.setAddTime(now);
+        dto.setLastReportTime(now);
+        if (appMapper.insertIgnore(dto) <= 0) {
+            return null;
+        }
+        appMapper.updateProfile(id, cleanName(appName), null, null, dto.getPlatform(), "manual");
+        return appMapper.selectByAppId(id);
     }
 
     @Override

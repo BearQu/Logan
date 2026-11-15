@@ -103,6 +103,46 @@ public class LoganAppController {
         }
     }
 
+    /**
+     * 平台侧创建应用（治理入口）：一个端一个 appId，创建后各端 SDK 持各的 appId 上报。
+     * 与 save.json 的区别：本接口只做「新建」，appId 已存在会明确拒绝，避免误覆盖人工登记的资料。
+     * body: {"appId","appName","platform"}，platform 1=Android 2=iOS 3=HarmonyOS。
+     */
+    @PostMapping("/create.json")
+    @ResponseBody
+    public LoganResponse<LoganAppDTO> create(@RequestBody(required = false) java.util.Map<String, Object> body,
+            HttpServletRequest request) {
+        String appId = pick(body, request, "appId");
+        if (StringUtils.isBlank(appId)) {
+            return LoganResponse.badParam("appId required");
+        }
+        String appName = pick(body, request, "appName");
+        if (StringUtils.isBlank(appName)) {
+            return LoganResponse.badParam("appName required");
+        }
+        Integer platform = parseInt(pick(body, request, "platform"));
+        if (platform == null || platform < 1 || platform > 3) {
+            return LoganResponse.badParam("platform must be 1(Android)/2(iOS)/3(HarmonyOS)");
+        }
+        String id = appId.trim();
+        if (!id.matches("[A-Za-z0-9_.\\-]{3,128}")) {
+            return LoganResponse.badParam("appId only allows letters, digits, dot, dash, underscore (3-128)");
+        }
+        try {
+            if (appService.get(id) != null) {
+                return LoganResponse.badParam("appId already exists: " + id);
+            }
+            LoganAppDTO dto = appService.createApp(id, appName, platform);
+            if (dto == null) {
+                return LoganResponse.exception("create app failed");
+            }
+            return LoganResponse.success(dto);
+        } catch (Exception e) {
+            LOGGER.error("create app failed: " + e.getMessage());
+            return LoganResponse.exception("create app failed");
+        }
+    }
+
     private static String pick(java.util.Map<String, Object> body, HttpServletRequest request, String key) {
         if (body != null && body.get(key) != null) {
             return String.valueOf(body.get(key));

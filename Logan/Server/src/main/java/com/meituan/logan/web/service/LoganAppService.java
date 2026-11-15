@@ -15,6 +15,9 @@ public interface LoganAppService {
     LoganAppDTO reportProfile(String appId, String appName, String iconBase64, String mime,
             Integer platform, String appVersion, String buildVersion, String deviceId, String source);
 
+    /** 平台侧创建应用（治理入口）：已存在返回 null，source 固定 manual。 */
+    LoganAppDTO createApp(String appId, String appName, Integer platform);
+
     List<LoganAppDTO> list();
 
     LoganAppDTO get(String appId);
