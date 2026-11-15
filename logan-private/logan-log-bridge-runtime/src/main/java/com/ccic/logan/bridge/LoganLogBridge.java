@@ -11,12 +11,13 @@ import com.dianping.logan.Logan;
  */
 public final class LoganLogBridge {
 
-    /** 日志类型映射：对齐服务端 LogTypeEnum（1 为 Logan 内部占用）。 */
+    /** 日志类型映射：对齐服务端 LoganTypeEnum（UNKNOWN0/ONE1/TWO2/THREE3/CRASH99）。
+     *  1 为 Logan 内部占用；4 不在枚举内会被落为 UNKNOWN(0)，故 w/e 统一 3，等级靠 V/D/I/W/E 前缀区分（与鸿蒙 LoganCompat 同规则）。 */
     public static final int TYPE_VERBOSE = 2;
     public static final int TYPE_DEBUG = 2;
     public static final int TYPE_INFO = 2;
     public static final int TYPE_WARN = 3;
-    public static final int TYPE_ERROR = 4;
+    public static final int TYPE_ERROR = 3;
 
     private static volatile boolean loganEnabled = true;   // 关 = 纯直通，logcat 零变化
     private static volatile boolean ready = false;          // Logan.init 成功后由宿主调 markReady()

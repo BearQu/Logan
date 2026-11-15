@@ -9,6 +9,7 @@ import errorManager from '@ohos.app.ability.errorManager';
 import faultLogger from '@ohos.faultLogger';
 import http from '@ohos.net.http';
 import deviceInfo from '@ohos.deviceInfo';
+import hilog from '@ohos.hilog';
 
 import { LoganCore } from './LoganCore';
 import { CrashEnvelope, extractTopFrames, makeFingerprint } from './CrashEnvelope';
@@ -23,6 +24,9 @@ export class CrashConfig {
   userId = '';
   authHeader = ''; // "Basic xxx"，与 PoC nginx basic-auth 对齐
 }
+
+const TAG = 'LoganCrash';
+const DOMAIN = 0x0001;
 
 const lastPost = new Map<string, number>();
 let cfg: CrashConfig | null = null;
@@ -97,38 +101,90 @@ export class LoganCrash {
     // 未处理 Promise 记常规日志（非致命）
     try {
       errorManager.on('unhandledRejection', (info: Object) => {
-        if (LoganCore.isReady()) LoganCore.w(4, 'UnhandledRejection: ' + String(info));
+        if (LoganCore.isReady()) LoganCore.w(3, 'UnhandledRejection: ' + String(info));
       });
     } catch {}
-    // 官方 faultLogger 事件登记（触发系统侧记录；内容由下方目录扫描补读）
-    try {
-      faultLogger.querySelfFaultLog(faultLogger.FaultType.NO_SPECIFIC).then(() => { LoganCrash.sweepFaultLogs(); }).catch(() => { LoganCrash.sweepFaultLogs(); });
-    } catch { LoganCrash.sweepFaultLogs(); }
+    // B 通道：官方 faultLogger.query 取 fullLog（FaultLogInfo 带完整日志文本，已核 d.ts）为主，
+    // 沙箱目录扫描为兜底（某些版本 fullLog 截断或 query 空时仍能拿到原始文件）。
+    LoganCrash.sweepAll();
   }
 
   /**
-   * B 通道：下次启动扫应用沙箱 faultlog 目录，逐条补传，seen 名单去重。
-   * 核实：本 SDK d.ts 的 FaultLogInfo 无内容字段（仅 pid/uid/type/timestamp/reason），
-   * 官方内容通道 = 沙箱 /data/storage/el2/log/faultlog/faultlogger/ 下文件。
+   * B 通道：官方 faultLogger.query 取 fullLog（FaultLogInfo 带完整日志文本，已核 d.ts）为主，
+   * 沙箱目录扫描为兜底（某些版本 fullLog 截断或 query 返回空时仍能拿到原始文件）。
+   * 必须串行执行：seen 名单落盘做跨启动去重，多 type 并发各自 loadSeen/saveSeen 会互相
+   * 覆盖后写入的 key，导致下次冷启动重复补传同一 faultlog（平台侧 crash_count 虚增）。
    */
+  static sweepAll(): void {
+    LoganCrash.runSweep().catch((e: Object) => { hilog.warn(DOMAIN, TAG, 'sweepAll throw: %{public}s', String(e)); });
+  }
+
+  private static async runSweep(): Promise<void> {
+    await LoganCrash.queryFaultLogs();
+    try { LoganCrash.sweepFaultLogs(); } catch (e) { hilog.warn(DOMAIN, TAG, 'sweepFaultLogs throw: %{public}s', String(e)); }
+  }
+
+  private static async queryFaultLogs(): Promise<void> {
+    const types: Array<faultLogger.FaultType> = [faultLogger.FaultType.CPP_CRASH, faultLogger.FaultType.JS_CRASH, faultLogger.FaultType.APP_FREEZE];
+    const seen = LoganCrash.loadSeen();
+    for (const t of types) {
+      let infos: Array<faultLogger.FaultLogInfo> | null = null;
+      try { infos = await faultLogger.query(t); } catch (e) { hilog.warn(DOMAIN, TAG, 'faultLogger.query throw: %{public}s', String(e)); continue; }
+      const n = infos ? infos.length : 0;
+      hilog.info(DOMAIN, TAG, 'faultLogger.query type=%{public}d -> %{public}d items', t, n);
+      if (!infos) continue;
+      for (const info of infos) {
+        try {
+          const key = 'q:' + t + ':' + info.pid + ':' + info.timestamp + ':' + (info.reason || '').slice(0, 40);
+          if (seen.indexOf(key) >= 0) continue;
+          const body = info.fullLog && info.fullLog.length > 0 ? info.fullLog : ((info.summary || '') + String.fromCharCode(10) + (info.reason || ''));
+          if (!body || body.length < 8) continue;
+          const kind = t === faultLogger.FaultType.CPP_CRASH ? 'cppcrash' : (t === faultLogger.FaultType.JS_CRASH ? 'jscrash' : 'freeze');
+          const reason = String(info.reason || '');
+          const sig = LoganCrash.parseSignal(reason + String.fromCharCode(10) + body);
+          const excType = kind === 'jscrash' ? 'Error' : '';
+          const env = envelope(kind, sig, excType, body, true);
+          env.crashTime = info.timestamp > 0 ? info.timestamp : Date.now();
+          recordCrash(env);
+          seen.push(key);
+          LoganCrash.saveSeen(seen);
+          hilog.info(DOMAIN, TAG, 'faultlog uploaded via query, kind=%{public}s len=%{public}d', kind, body.length);
+        } catch (e) { hilog.warn(DOMAIN, TAG, 'query item skip: %{public}s', String(e)); }
+      }
+    }
+  }
   static sweepFaultLogs(): void {
     const dir = '/data/storage/el2/log/faultlog/faultlogger';
     let names: string[] = [];
-    try { names = LoganCore.listFilesInDir(dir); } catch { return; }
+    try { names = LoganCore.listFilesInDir(dir); } catch (e) { hilog.warn(DOMAIN, TAG, 'listFilesInDir(%{public}s) failed: %{public}s', dir, String(e)); return; }
+    hilog.info(DOMAIN, TAG, 'sweepFaultLogs dir=%{public}s names=%{public}d', dir, names.length);
     if (names.length === 0) return;
     const seen = LoganCrash.loadSeen();
     for (const name of names) {
-      if (!name.endsWith('.log')) continue;
+      // faultlogger 落盘文件名没有 .log 后缀（jscrash-<bundle>-<uid>-<yyyymmddhhmmss>），
+      // 只认 .log 会让 B 通道永远扫不到（与 Android 通道 B 只认 .log 而 xCrash 写 .xcrash 同类 bug）
+      if (!LoganCrash.isFaultLogName(name)) continue;
       if (seen.includes(name)) continue;
       let text = '';
       try { text = LoganCore.readFileText(dir + '/' + name); } catch { continue; }
       if (!text) continue;
-      const kind = name.indexOf('cppcrash') >= 0 ? 'cppcrash' : (name.indexOf('jscrash') >= 0 ? 'jscrash' : (name.indexOf('freeze') >= 0 ? 'freeze' : 'app'));
+      const lower = name.toLowerCase();
+      const kind = lower.indexOf('cppcrash') >= 0 ? 'cppcrash' : (lower.indexOf('jscrash') >= 0 || lower.indexOf('unhandled') >= 0 ? 'jscrash' : (lower.indexOf('freeze') >= 0 ? 'freeze' : 'app'));
       const sig = LoganCrash.parseSignal(text);
       recordCrash(envelope(kind, sig, '', text, true));
       seen.push(name);
       LoganCrash.saveSeen(seen);
     }
+  }
+
+  // 官方 faultlogger 命名：jscrash / cppcrash / freeze 前缀 + bundle + uid + 时间戳（一般无 .log 后缀，兼容有后缀）
+  private static isFaultLogName(name: string): boolean {
+    const n = name.toLowerCase();
+    if (n.endsWith('.temp') || n.indexOf('.') === 0) return false;
+    const kinds: string[] = ['jscrash-', 'cppcrash-', 'freeze-', 'jsunhandled-', 'appfreeze-', 'ohjscrash-'];
+    for (const p of kinds) { if (n.startsWith(p)) return true; }
+    // 兜底：官方某些版本形如 <kind>-bundle-uid-time.log
+    return n.endsWith('.log') && (n.indexOf('crash') >= 0 || n.indexOf('freeze') >= 0);
   }
 
   private static seenFile(): string { return LoganCrash.filesDir + '/logan_fault_seen.json'; }

@@ -161,8 +161,19 @@ static napi_value ReadFileText(napi_env env, napi_callback_info info) {
     return out;
 }
 
+/* 真实 native 崩溃探针：写空指针 → SIGSEGV（验收 faultlogger B 通道用） */
+static napi_value TestCppCrash(napi_env env, napi_callback_info info) {
+    volatile int *p = (volatile int *)0;
+    *p = 1;
+    napi_value out; napi_create_int32(env, 0, &out);
+    return out;
+}
+
+__attribute__((visibility("default")))
 napi_value napi_register_module_v1(napi_env env, napi_value exports) {
     napi_value fn;
+    napi_create_function(env, "testCppCrash", NAPI_AUTO_LENGTH, TestCppCrash, NULL, &fn);
+    napi_set_named_property(env, exports, "testCppCrash", fn);
     napi_create_function(env, "loganInit", NAPI_AUTO_LENGTH, LoganInit, NULL, &fn);
     napi_set_named_property(env, exports, "loganInit", fn);
     napi_create_function(env, "loganOpen", NAPI_AUTO_LENGTH, LoganOpen, NULL, &fn);
@@ -184,4 +195,19 @@ napi_value napi_register_module_v1(napi_env env, napi_value exports) {
     napi_create_function(env, "readFileText", NAPI_AUTO_LENGTH, ReadFileText, NULL, &fn);
     napi_set_named_property(env, exports, "readFileText", fn);
     return exports;
+}
+
+/* 官方推荐注册路径：构造期登记 napi_module，不依赖符号可见性（CMake 用了 -fvisibility=hidden） */
+static napi_module g_logan_napi_module = {
+    .nm_version = 1,
+    .nm_flags = 0,
+    .nm_filename = NULL,
+    .nm_register_func = napi_register_module_v1,
+    .nm_modname = "logan_napi",
+    .nm_priv = NULL,
+    .reserved = { NULL },
+};
+
+__attribute__((constructor)) void RegisterLoganNapiModule(void) {
+    napi_module_register(&g_logan_napi_module);
 }

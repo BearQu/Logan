@@ -8,3 +8,5 @@ export const listDir: (dir: string) => string;
 export const writeFileText: (path: string, text: string) => number;
 export const deleteFile: (path: string) => number;
 export const readFileText: (path: string) => string;
+
+export const testCppCrash: () => number;

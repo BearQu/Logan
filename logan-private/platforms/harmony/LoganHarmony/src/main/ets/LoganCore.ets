@@ -49,7 +49,8 @@ export class LoganCore {
     logDir = filesDir + '/logan_logs';
     const max = maxFile ?? 5 * 1024 * 1024;
     const r: number = napi.loganInit(cacheDir, logDir, max, AES_KEY, AES_IV) as number;
-    napi.loganOpen(logDir + '/' + todayName()) as number;
+    // clogan_open 内部是 _dir_path + pathname 拼接（与官方 Logan.open 同语义）→ 必须只传文件名，传绝对路径会拼出不存在的嵌套目录
+    napi.loganOpen(todayName()) as number;
     inited = true;
     return r;
   }
@@ -86,8 +87,11 @@ export class LoganCore {
   /** 上传改名当天文件后重新打开当天文件（mmap 不跟随改名，必须 reopen 否则丢日志） */
   static reopenToday(): void {
     if (!inited || !logDir) return;
-    napi.loganOpen(logDir + '/' + todayName()) as number;
+    napi.loganOpen(todayName()) as number;
   }
+
+  /** 真实 native 崩溃探针（napi 写空指针） */
+  static testNativeCrash(): void { napi.testCppCrash(); }
 
   static isReady(): boolean { return inited; }
 }

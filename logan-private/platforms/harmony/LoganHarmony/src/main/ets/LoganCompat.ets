@@ -24,7 +24,8 @@ function dedup(key: string): boolean {
 export class LoganCompat {
   static setEnabled(on: boolean): void { enabled = on; }
 
-  // type 映射与 Android 桥一致：v/d/i→2 w→3 e→4
+  // type 映射对齐服务端 LoganTypeEnum（只有 UNKNOWN0/ONE1/TWO2/THREE3/CRASH99）：
+  // v/d/i→2  w/e→3（等级靠 D/I/W/E 前缀区分；曾用 4 会被服务端判成 UNKNOWN=0）
   static d(tag: string, msg: string): void {
     hilog.debug(DOMAIN, tag, '%{public}s', msg);
     if (enabled && LoganCore.isReady() && dedup(tag + msg)) LoganCore.w(2, `D/${tag}: ${msg}`);
@@ -42,6 +43,6 @@ export class LoganCompat {
 
   static e(tag: string, msg: string): void {
     hilog.error(DOMAIN, tag, '%{public}s', msg);
-    if (enabled && LoganCore.isReady() && dedup(tag + msg)) LoganCore.w(4, `E/${tag}: ${msg}`);
+    if (enabled && LoganCore.isReady() && dedup(tag + msg)) LoganCore.w(3, `E/${tag}: ${msg}`);
   }
 }
