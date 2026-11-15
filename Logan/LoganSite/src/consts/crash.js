@@ -9,6 +9,7 @@ export const KIND_META = {
   jscrash: { label: "JS崩溃", color: "#13c2c2" },
   cppcrash: { label: "CPP崩溃", color: "#fa541c" },
   freeze: { label: "冻屏", color: "#faad14" },
+  app: { label: "应用异常", color: "#bfbfbf" },
 };
 
 export const SEVERITY_META = {

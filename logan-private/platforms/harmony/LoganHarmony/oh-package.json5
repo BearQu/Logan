@@ -1,5 +1,5 @@
 {
-  "name": "@ccic/logan-harmony",
+  "name": "logan-harmony",
   "version": "0.1.0",
   "description": "Logan HarmonyOS client SDK: shared clogan core (same C sources as Android/iOS) + system crash channels + Log dual-write compat. MIT.",
   "main": "index.ets",

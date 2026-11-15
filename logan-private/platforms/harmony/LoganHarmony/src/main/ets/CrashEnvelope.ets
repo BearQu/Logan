@@ -20,6 +20,9 @@ export interface CrashEnvelope {
   topFrames: string[];
   signal: string;
   content: string;
+  /** 平台标识：服务端 LoganCrashServiceImpl.platformOf 优先读显式 platform 数字，os 作兜底（harmony→3） */
+  os: string;
+  platform: number;
 }
 
 const SKIP_PREFIXES = ['at Function.', 'app Spawn', '-----', 'Device info', 'Fault thread info', 'Tid:', 'Last message', 'Back traces'];

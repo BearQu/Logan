@@ -38,7 +38,8 @@ function envelope(kind: string, signal: string, excType: string, text: string, d
     brand: deviceInfo.brand ?? 'unknown', model: deviceInfo.productModel ?? 'unknown',
     sdkInt: deviceInfo.sdkApiVersion ?? 0, release: deviceInfo.osFullName ?? 'unknown',
     fingerprint: makeFingerprint(kind, signal, excType, top),
-    topFrames: top, signal, content: text.slice(0, 56 * 1024)
+    topFrames: top, signal, content: text.slice(0, 56 * 1024),
+    os: 'harmony', platform: 3
   };
 }
 
@@ -78,7 +79,7 @@ class LoganErrorObserver {
       const probes: string[] = ['Error', 'Exception'];
       let name = 'Error';
       for (const p of probes) { if (text.includes(p)) { name = p === 'Error' ? 'Error' : 'Exception'; break; } }
-      recordCrash(envelope('js', '', name, text, false));
+      recordCrash(envelope('jscrash', '', name, text, false));
     } catch { /* observer 内绝不抛出 */ }
   }
 }
@@ -122,7 +123,7 @@ export class LoganCrash {
       let text = '';
       try { text = LoganCore.readFileText(dir + '/' + name); } catch { continue; }
       if (!text) continue;
-      const kind = name.indexOf('cppcrash') >= 0 ? 'cpp' : (name.indexOf('jscrash') >= 0 ? 'js' : (name.indexOf('freeze') >= 0 ? 'freeze' : 'app'));
+      const kind = name.indexOf('cppcrash') >= 0 ? 'cppcrash' : (name.indexOf('jscrash') >= 0 ? 'jscrash' : (name.indexOf('freeze') >= 0 ? 'freeze' : 'app'));
       const sig = LoganCrash.parseSignal(text);
       recordCrash(envelope(kind, sig, '', text, true));
       seen.push(name);
