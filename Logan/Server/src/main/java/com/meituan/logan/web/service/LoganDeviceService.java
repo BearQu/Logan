@@ -40,4 +40,10 @@ public interface LoganDeviceService {
     Map<String, Object> listDevices(String appId, String keyword, Integer limit, Integer offset);
 
     List<LoganDeviceCommandDTO> listCommands(String appId, String deviceId, Integer limit);
+
+    /** 客户端上送设备基本信息快照（内存/磁盘/CPU/GPU/电量/网络…），一设备一行覆盖。 */
+    boolean reportDeviceInfo(String appId, String deviceId, Integer platform, String info);
+
+    /** 读取某设备最新设备信息快照，无则 null。 */
+    com.meituan.logan.web.dto.LoganDeviceInfoDTO deviceInfo(String appId, String deviceId);
 }

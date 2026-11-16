@@ -1,6 +1,7 @@
 package com.meituan.logan.web.service.impl;
 
 import com.meituan.logan.web.dto.LoganDeviceCommandDTO;
+import com.meituan.logan.web.dto.LoganDeviceInfoDTO;
 import com.meituan.logan.web.dto.LoganDeviceViewDTO;
 import com.meituan.logan.web.mapper.LoganDeviceMapper;
 import com.meituan.logan.web.service.LoganDeviceService;
@@ -28,6 +29,9 @@ public class LoganDeviceServiceImpl implements LoganDeviceService {
     private static final int MAX_PARAM_LEN = 500;
 
     private static final int MAX_NOTE_LEN = 500;
+
+    /** 设备信息 JSON 上限 64KB，防异常大包。 */
+    private static final int MAX_INFO_LEN = 64 * 1024;
 
     private static final int DEFAULT_LIMIT = 200;
 
@@ -217,5 +221,47 @@ public class LoganDeviceServiceImpl implements LoganDeviceService {
             return null;
         }
         return s.length() <= max ? s : s.substring(0, max);
+    }
+
+    @Override
+    public boolean reportDeviceInfo(String appId, String deviceId, Integer platform, String info) {
+        if (StringUtils.isBlank(appId) || StringUtils.isBlank(deviceId) || StringUtils.isBlank(info)) {
+            return false;
+        }
+        String json = info.trim();
+        if (json.length() > MAX_INFO_LEN) {
+            LOGGER.warn("device info too large, rejected: " + json.length());
+            return false;
+        }
+        // 必须是合法 JSON 对象，避免脏数据把前端渲染打挂
+        if (json.charAt(0) != '{' || json.charAt(json.length() - 1) != '}') {
+            return false;
+        }
+        try {
+            com.alibaba.fastjson.JSON.parseObject(json);
+        } catch (Exception e) {
+            LOGGER.warn("device info is not valid json: " + e.getMessage());
+            return false;
+        }
+        try {
+            return deviceMapper.upsertDeviceInfo(appId, deviceId, nzPlatform(platform), json,
+                    System.currentTimeMillis()) > 0;
+        } catch (Exception e) {
+            LOGGER.warn("upsert device info failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public LoganDeviceInfoDTO deviceInfo(String appId, String deviceId) {
+        if (StringUtils.isBlank(appId) || StringUtils.isBlank(deviceId)) {
+            return null;
+        }
+        try {
+            return deviceMapper.selectDeviceInfo(appId, deviceId);
+        } catch (Exception e) {
+            LOGGER.warn("select device info failed: " + e.getMessage());
+            return null;
+        }
     }
 }

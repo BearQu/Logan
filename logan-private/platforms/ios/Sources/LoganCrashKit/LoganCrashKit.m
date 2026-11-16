@@ -2,6 +2,7 @@
  * LoganCrashKit.m —— iOS 崩溃层实现（对齐 Android logan-crash 契约，见 LoganCrashKit.h）。
  */
 #import "LoganCrashKit.h"
+#import <string.h>
 // 必须早于任何系统头文件：Darwin 的 <ucontext.h> 仅在 _XOPEN_SOURCE 下暴露 uc_mcontext。
 #define _XOPEN_SOURCE 700
 
@@ -82,6 +83,43 @@ static NSString *LoganOsVersion(void) {
 #endif
 }
 
+// 把 C 字符串按「字节」原样拷进 NSMutableData。
+// 关键：iOS 的 NSString %-33s / stringWithUTF8String: 对非 UTF-8（如中文 App 名在
+// Mach-O 里的原始字节）会静默丢字节，导致上报后模块名乱码且不可逆。这里绕过
+// 任何字符集假设，后面用 LoganAppendCString 以 latin-1 单字节方式转成 NSString，
+// 保证字节序列 1:1 存活到平台侧，平台再按 UTF-8 还原。
+static void LoganAppendCString(NSMutableData *out, const char *s) {
+    if (!s) return;
+    [out appendBytes:s length:strlen(s)];
+}
+static NSMutableData *LoganCopyCString(const char *s) {
+    NSMutableData *d = [NSMutableData data];
+    LoganAppendCString(d, s);
+    return d;
+}
+// 单字节保真：每个字节映射 U+0000..U+00FF，绝不丢内容；乱码修复在平台侧做。
+static NSString *LoganLatin1String(const char *s) {
+    if (!s) return @"";
+    return [[NSString alloc] initWithBytes:s length:strlen(s) encoding:NSASCIIStringEncoding] ?: [[NSString alloc] initWithBytes:s length:strlen(s) encoding:NSISOLatin1StringEncoding] ?: @"";
+}
+
+// 唯一认可的 C 字符串 → NSString 通道：先按 UTF-8 解（含中文 App 名的正常情形），
+// 解不出再走 latin-1 单字节保真。绝不再用 %s / stringWithUTF8String: 直接吃裸字节，
+// 否则非 UTF-8 字节会被 defaultCStringEncoding(macOS Roman) 曲解成不可逆乱码。
+static NSString *LoganCStringToString(const char *s) {
+    if (!s) return @"";
+    NSString *u8 = [[NSString alloc] initWithBytes:s length:strlen(s) encoding:NSUTF8StringEncoding];
+    if (u8) return u8;
+    return LoganLatin1String(s);
+}
+
+// 等价于 %-33s 的按字节定宽左对齐（NSString 的 %@ 会按字符数补，中文会错位）。
+static NSString *LoganPad33(NSString *text, size_t byteLen) {
+    NSMutableString *m = [NSMutableString stringWithString:text ?: @""];
+    if ([m length] == 0) [m appendString:@""];
+    for (size_t i = byteLen; i < 33; i++) [m appendString:@" "];
+    return m;
+}
 // 把崩溃现场的 PC 解析成一行符号（与 backtrace_symbols 同形，便于本地符号化）。
 // 说明：dladdr 非严格 async-signal-safe，与 backtrace 同属 PoC 权衡（早期 Bugly/KSCrash 简易模式同样做法）。
 static NSString *LoganSymbolicatePC(uintptr_t pc) {
@@ -90,13 +128,15 @@ static NSString *LoganSymbolicatePC(uintptr_t pc) {
     if (pc == 0) return nil;
     if (dladdr((void *)pc, &info) && info.dli_fname) {
         const char *img = strrchr(info.dli_fname, '/');
-        img = img ? img + 1 : info.dli_fname;
+        size_t imgLen = 0;
+        if (img) { imgLen = strlen(img + 1); } else { img = info.dli_fname; imgLen = strlen(img); }
+        NSString *imgStr = LoganPad33(LoganCStringToString(img), imgLen);
         unsigned long long off = info.dli_fbase ? (unsigned long long)(pc - (uintptr_t)info.dli_fbase) : 0ULL;
         if (info.dli_sname) {
             unsigned long long symoff = (unsigned long long)(pc - (uintptr_t)info.dli_saddr);
-            return [NSString stringWithFormat:@"%-33s 0x%016llx %s + %llu", img, (unsigned long long)pc, info.dli_sname, symoff];
+            return [NSString stringWithFormat:@"%@ 0x%016llx %@ + %llu", imgStr, (unsigned long long)pc, LoganCStringToString(info.dli_sname), symoff];
         }
-        return [NSString stringWithFormat:@"%-33s 0x%016llx + %llu", img, (unsigned long long)pc, off];
+        return [NSString stringWithFormat:@"%@ 0x%016llx + %llu", imgStr, (unsigned long long)pc, off];
     }
     return [NSString stringWithFormat:@"0x%016llx", (unsigned long long)pc];
 }
@@ -324,7 +364,7 @@ static void LoganSignalHandler(int sig, siginfo_t *info, void *ucontext) {
             [frames addObject:lrLine];
         }
         for (int i = 0; i < n; i++) {
-            NSString *line = syms ? [NSString stringWithUTF8String:syms[i]] : [NSString stringWithFormat:@"#%d pc ???", i];
+            NSString *line = syms ? LoganCStringToString(syms[i]) : [NSString stringWithFormat:@"#%d pc ???", i];
             [content appendFormat:@"#%d %@\n", i, line];
             [frames addObject:line];
         }

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganSymbolMapper">
+    <resultMap id="symbolMap" type="com.meituan.logan.web.dto.LoganSymbolDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="platform" jdbcType="INTEGER" property="platform"/>
+        <result column="app_version" jdbcType="VARCHAR" property="appVersion"/>
+        <result column="build_version" jdbcType="VARCHAR" property="buildVersion"/>
+        <result column="kind" jdbcType="VARCHAR" property="kind"/>
+        <result column="file_name" jdbcType="VARCHAR" property="fileName"/>
+        <result column="file_path" jdbcType="VARCHAR" property="filePath"/>
+        <result column="file_hash" jdbcType="VARCHAR" property="fileHash"/>
+        <result column="file_size" jdbcType="BIGINT" property="fileSize"/>
+        <result column="note" jdbcType="VARCHAR" property="note"/>
+        <result column="uploader" jdbcType="VARCHAR" property="uploader"/>
+        <result column="source" jdbcType="VARCHAR" property="source"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insertIgnore" parameterType="com.meituan.logan.web.dto.LoganSymbolDTO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT IGNORE INTO logan_symbol
+        (app_id, platform, app_version, build_version, kind, file_name, file_path, file_hash, file_size,
+         note, uploader, source, add_time)
+        VALUES
+        (#{appId}, #{platform}, #{appVersion}, #{buildVersion}, #{kind}, #{fileName}, #{filePath}, #{fileHash},
+         #{fileSize}, #{note}, #{uploader}, #{source}, #{addTime})
+    </insert>
+
+    <select id="selectById" resultMap="symbolMap">
+        SELECT * FROM logan_symbol WHERE id = #{id}
+    </select>
+
+    <select id="selectByHash" resultMap="symbolMap">
+        SELECT * FROM logan_symbol WHERE app_id = #{appId} AND file_hash = #{fileHash} ORDER BY id DESC LIMIT 1
+    </select>
+
+    <select id="selectLatest" resultMap="symbolMap">
+        SELECT * FROM logan_symbol
+        WHERE app_id = #{appId} AND kind = #{kind}
+        <if test="appVersion != null and appVersion != ''">
+            AND (app_version = #{appVersion} OR app_version IS NULL)
+        </if>
+        ORDER BY (app_version = #{appVersion}) DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <select id="list" resultMap="symbolMap">
+        SELECT * FROM logan_symbol
+        <where>
+            <if test="appId != null and appId != ''">AND app_id = #{appId}</if>
+            <if test="appVersion != null and appVersion != ''">AND app_version = #{appVersion}</if>
+            <if test="kind != null and kind != ''">AND kind = #{kind}</if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM logan_symbol WHERE id = #{id}
+    </delete>
+</mapper>

@@ -11,6 +11,7 @@ import {
 import { KIND_META, SEVERITY_META, STATUS_META, parseJsonArrayMaybe } from "../../consts/crash";
 import CrashTimeline from "./components/CrashTimeline";
 import FixHistory from "./components/FixHistory";
+import SymbolKit from "./components/SymbolKit";
 
 /** 崩溃详情（仿 Bugly）：LLM 定性 + 基本信息 + 崩溃实例列表 + 堆栈正文。 */
 export class CrashDetail extends Component {
@@ -166,6 +167,12 @@ export class CrashDetail extends Component {
               issue={issue}
               reloadNonce={this.state.reloadNonce}
               onReported={() => { this.setState({ reloadNonce: this.state.reloadNonce + 1 }); this.load(); }}
+            />
+
+            <SymbolKit
+              issue={issue}
+              instances={instances}
+              reloadNonce={this.state.reloadNonce}
             />
           </Col>
         </Row>

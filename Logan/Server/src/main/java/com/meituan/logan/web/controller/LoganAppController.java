@@ -146,6 +146,64 @@ public class LoganAppController {
         }
     }
 
+    /**
+     * appId 预生成（用户要求：登记之后自动生成，不让人手填）。
+     * 传包名 + 所属端，平台按「包名 + 端后缀」派生 appId 并查重；冲突时追加端标记后缀，
+     * 前端只读展示这个值，用户确认即可创建。
+     * body/参数: {packageName, platform} 或 {appId}（纯查重）。
+     */
+    @PostMapping("/prepare.json")
+    @ResponseBody
+    public LoganResponse<java.util.Map<String, Object>> prepare(@RequestBody(required = false) java.util.Map<String, Object> body,
+            HttpServletRequest request) {
+        String explicit = StringUtils.trimToEmpty(pick(body, request, "appId"));
+        Integer platform = parseInt(pick(body, request, "platform"));
+        String packageName = StringUtils.trimToEmpty(pick(body, request, "packageName"));
+        java.util.Map<String, Object> result = new java.util.HashMap<String, Object>();
+        String candidate;
+        if (StringUtils.isNotBlank(explicit)) {
+            candidate = explicit;
+        } else {
+            if (StringUtils.isBlank(packageName)) {
+                return LoganResponse.badParam("packageName or appId required");
+            }
+            if (platform == null || platform < 1 || platform > 3) {
+                return LoganResponse.badParam("platform must be 1(Android)/2(iOS)/3(HarmonyOS)");
+            }
+            String pkg = packageName.replaceAll("[^A-Za-z0-9_.\\-]", "");
+            if (pkg.length() < 3) {
+                return LoganResponse.badParam("packageName looks invalid: " + packageName);
+            }
+            String suffix = platform.intValue() == 1 ? ".android" : (platform.intValue() == 2 ? ".ios" : ".harmony");
+            // 已带正确后缀就不重复追加
+            candidate = pkg.toLowerCase().endsWith(suffix) ? pkg : pkg + suffix;
+        }
+        if (!candidate.matches("[A-Za-z0-9_.\\\\-]{3,128}")) {
+            return LoganResponse.badParam("appId only allows letters, digits, dot, dash, underscore (3-128)");
+        }
+        String finalId = candidate;
+        int round = 0;
+        try {
+            // 撞名则加端标记，最多让 20 次，全部由平台决定，用户不需要手填
+            while (appService.get(finalId) != null) {
+                round++;
+                if (round > 20) {
+                    return LoganResponse.exception("too many apps on this package name, register manually");
+                }
+                finalId = candidate + "-" + round;
+            }
+        } catch (Exception e) {
+            return LoganResponse.exception("prepare appId failed: " + e.getMessage());
+        }
+        result.put("appId", finalId);
+        result.put("suggested", candidate);
+        result.put("existed", Boolean.valueOf(round > 0 || !finalId.equals(candidate)));
+        result.put("renamed", Boolean.valueOf(!finalId.equals(candidate)));
+        result.put("platform", platform);
+        result.put("packageName", StringUtils.trimToNull(packageName));
+        return LoganResponse.success(result);
+    }
+
     private static String pick(java.util.Map<String, Object> body, HttpServletRequest request, String key) {
         if (body != null && body.get(key) != null) {
             return String.valueOf(body.get(key));

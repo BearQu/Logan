@@ -1,8 +1,11 @@
 package com.ccic.logan.command;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+
+import com.ccic.logan.device.LoganDeviceInfo;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,6 +54,10 @@ public final class LoganCommandPoller {
     private volatile boolean running;
     private volatile long intervalMs = 60000L;
 
+    /** 采集设备信息用的 ApplicationContext（由宿主 LoganKit 注入）。 */
+    private volatile Context appContext;
+    private volatile boolean infoReported;
+
     private LoganCommandPoller() {}
 
     public static LoganCommandPoller get() {
@@ -76,6 +83,12 @@ public final class LoganCommandPoller {
         if (extraHeaders != null) {
             this.headers.putAll(extraHeaders);
         }
+        return this;
+    }
+
+    /** 注入 ApplicationContext，供 collect_info 采集设备信息（内存/存储/CPU/电量/网络）。 */
+    public LoganCommandPoller attachContext(Context ctx) {
+        this.appContext = ctx == null ? null : ctx.getApplicationContext();
         return this;
     }
 
@@ -109,7 +122,10 @@ public final class LoganCommandPoller {
                         return;
                     }
                     try {
-                        pollOnce();
+                        if (!infoReported) {
+                    infoReported = reportDeviceInfoOnce("boot");
+                }
+                pollOnce();
                     } catch (Throwable t) {
                         Log.w(TAG, "poll failed: " + t.getMessage());
                     }
@@ -164,6 +180,12 @@ public final class LoganCommandPoller {
             final String action = c.optString("action");
             final String param = c.optString("param", null);
             Log.i(TAG, "command received id=" + id + " action=" + action);
+            if ("collect_info".equals(action)) {
+                // 设备信息属于 SDK 职责（与机器码同源），不下放宿主，避免各端各写一套
+                boolean done = reportDeviceInfoOnce("command");
+                ack(id, done, done ? null : "device info collect failed");
+                continue;
+            }
             boolean ok = false;
             try {
                 Handler2 h = handler;
@@ -175,6 +197,39 @@ public final class LoganCommandPoller {
                 ok = false;
             }
             ack(id, ok, ok ? null : "client handler returned false");
+        }
+    }
+
+    /**
+     * 采集并上报设备信息快照（真值，取不到的字段由采集器省略）。
+     * why=boot 表示启动顺带上报，why=command 表示平台下发 collect_info。
+     */
+    private boolean reportDeviceInfoOnce(String why) {
+        Context ctx = appContext;
+        if (ctx == null || appId.length() == 0 || deviceId.length() == 0) {
+            Log.w(TAG, "device info skipped, no context or ids, trigger=" + why);
+            return false;
+        }
+        try {
+            String info = LoganDeviceInfo.snapshot(ctx);
+            if (info == null || info.length() < 3) {
+                return false;
+            }
+            JSONObject req = new JSONObject();
+            req.put("appId", appId);
+            req.put("deviceId", deviceId);
+            req.put("platform", 1);
+            req.put("appVersion", appVersion);
+            req.put("buildVersion", buildVersion);
+            req.put("trigger", why);
+            req.put("info", new JSONObject(info));
+            String resp = post("/logan/device/info/report.json", req.toString());
+            boolean ok = new JSONObject(resp).optInt("code") == 200;
+            Log.i(TAG, "device info reported, trigger=" + why + ", ok=" + ok + ", bytes=" + info.length());
+            return ok;
+        } catch (Throwable t2) {
+            Log.w(TAG, "device info report failed: " + t2.getMessage());
+            return false;
         }
     }
 

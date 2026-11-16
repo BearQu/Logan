@@ -5,7 +5,7 @@ import {
   Select, Alert,
 } from "antd";
 import moment from "moment";
-import { fetchAppListApi, saveAppApi, createAppApi } from "../../common/api";
+import { fetchAppListApi, saveAppApi, createAppApi, prepareAppApi } from "../../common/api";
 import { SOURCE_META } from "../../consts/crash";
 import { getCurrentAppId, setCurrentAppId } from "../../common/currentApp";
 
@@ -98,38 +98,53 @@ class AppList extends Component {
 
   openCreate = () => {
     const { form } = this.props;
-    if (form) { form.resetFields(["create_appId", "create_appName", "create_platform"]); }
-    this.setState({ creating: true, created: null });
+    if (form) { form.resetFields(["create_packageName", "create_appName", "create_platform"]); }
+    this.setState({ creating: true, created: null, prepared: null });
   };
 
   closeCreate = () => {
     const { form } = this.props;
-    if (form) { form.resetFields(["create_appId", "create_appName", "create_platform"]); }
-    this.setState({ creating: false, created: null });
+    if (form) { form.resetFields(["create_packageName", "create_appName", "create_platform"]); }
+    this.setState({ creating: false, created: null, prepared: null });
   };
 
-  fillCreateAppId = () => {
+  // appId 由平台自动生成（用户要求：不让人手填，避免各端混乱）：包名 + 端后缀，撞名平台自动让位。
+  prepare = async () => {
     const { form } = this.props;
-    const base = (form.getFieldValue("create_appId") || "").replace(/\.(android|ios|harmony)$/, "");
-    const plat = Number(form.getFieldValue("create_platform") || 1);
-    const suffix = plat === 2 ? ".ios" : plat === 3 ? ".harmony" : ".android";
-    form.setFieldsValue({ create_appId: base + suffix });
+    const pkg = String(form.getFieldValue("create_packageName") || "").trim();
+    const platform = Number(form.getFieldValue("create_platform") || 0);
+    if (!pkg || !platform) { this.setState({ prepared: null }); return; }
+    this.setState({ preparing: true });
+    try {
+      const r = await prepareAppApi({ packageName: pkg, platform: platform });
+      this.setState({ prepared: r || null, preparing: false });
+    } catch (e) {
+      this.setState({ prepared: null, preparing: false });
+    }
   };
 
   submitCreate = (e) => {
     e.preventDefault();
     const { form } = this.props;
-    form.validateFields(["create_appId", "create_appName", "create_platform"], async (err, values) => {
+    form.validateFields(["create_packageName", "create_appName", "create_platform"], async (err, values) => {
       if (err) { return; }
       this.setState({ createSubmitting: true });
       try {
+        const platform = Number(values.create_platform);
+        const pkg = String(values.create_packageName || "").trim();
+        let appId = this.state.prepared && this.state.prepared.appId;
+        if (!appId) {
+          const prep = await prepareAppApi({ packageName: pkg, platform: platform });
+          appId = prep && prep.appId;
+        }
+        if (!appId) { throw new Error("平台未能生成 appId"); }
         const dto = await createAppApi({
-          appId: String(values.create_appId || "").trim(),
+          appId: appId,
           appName: String(values.create_appName || "").trim(),
-          platform: Number(values.create_platform),
+          platform: platform,
         });
-        this.setState({ created: dto || null, createSubmitting: false });
-        message.success("应用已创建");
+        this.setState({ created: dto || null, createSubmitting: false, prepared: null });
+        message.success("应用已创建，appId 由平台分配");
         this.load();
       } catch (e2) {
         this.setState({ createSubmitting: false });
@@ -237,13 +252,18 @@ class AppList extends Component {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message="同一产品的 Android / iOS / HarmonyOS 各自建一个应用，appId 互不共用；客户端 SDK 上报哪个 appId，数据就落到哪个应用。"
-            description="推荐 appId 形式：包名 + 端后缀，例如 com.example.app.android / .ios / .harmony。未登记的 appId 照常入库不丢数据，清单里会标「未登记」提醒你补建。"
+            message="同一产品的 Android / iOS / HarmonyOS 各建一个应用，appId 互不共用；客户端 SDK 上报哪个 appId，数据就落到哪个应用。"
+            description="appId 不用手填：输入包名、选择所属端后由平台自动生成（包名 + 端后缀，撞名自动让位），分配后不可改。未登记的 appId 照常入库不丢数据，清单里会标「未登记」提醒你补登记。"
           />
           <Form layout="vertical" onSubmit={this.submitCreate}>
+            <Form.Item label="包名（客户端 bundleName / applicationId）" required>
+              {form.getFieldDecorator("create_packageName", { rules: [{ required: true, message: "请填写客户端包名" }, { pattern: /^[A-Za-z0-9_.\-]{3,120}$/, message: "只允许字母、数字、点、横线、下划线" }] })(
+                <Input placeholder="如：com.ccic.baodai" onBlur={this.prepare} />
+              )}
+            </Form.Item>
             <Form.Item label="所属端" required>
               {form.getFieldDecorator("create_platform", { initialValue: 1 })(
-                <Select onChange={() => this.fillCreateAppId()}>
+                <Select onChange={() => this.prepare()}>
                   <Select.Option value={1}>Android</Select.Option>
                   <Select.Option value={2}>iOS</Select.Option>
                   <Select.Option value={3}>HarmonyOS</Select.Option>
@@ -251,15 +271,27 @@ class AppList extends Component {
               )}
             </Form.Item>
             <Form.Item label="应用名称" required>
-              {form.getFieldDecorator("create_appName", { rules: [{ required: true, message: "请填写应用名称" }] })(<Input placeholder="如：保贝（Android）" />)}
+              {form.getFieldDecorator("create_appName", { rules: [{ required: true, message: "请填写应用名称" }] })(<Input placeholder="如：保险明星（Android）" />)}
             </Form.Item>
             <Form.Item
-              label="appId（唯一，创建后不可改）"
-              required
-              extra="客户端 SDK 的 LoganKit 里配置成同一个值；换端就再建一个，别共用。"
+              label="appId（平台自动分配，创建后不可改）"
+              extra="不用手填：平台按「包名 + 端后缀」生成并查重，撞名自动让位；SDK 的 LoganKit 配成同一个值，换端就再建一个，别共用。"
             >
-              {form.getFieldDecorator("create_appId", { rules: [{ required: true, message: "请填写 appId" }, { pattern: /^[A-Za-z0-9_.\-]{3,128}$/, message: "只允许字母、数字、点、横线、下划线（3-128 位）" }] })(
-                <Input placeholder="com.example.app.android" />
+              {this.state.prepared ? (
+                <div>
+                  <div style={{ fontFamily: "Menlo, monospace", fontSize: 13, background: "#f6ffed", border: "1px solid #b7eb8f", borderRadius: 4, padding: "6px 10px" }}>
+                    {this.state.prepared.appId}
+                  </div>
+                  {this.state.prepared.renamed ? (
+                    <div style={{ color: "#fa8c16", fontSize: 12, marginTop: 4 }}>
+                      该包名对应 appId 已被占用，平台已自动改用上面的新值。
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <span style={{ color: "#8c8c8c", fontSize: 12 }}>
+                  {this.state.preparing ? "正在向平台申请 appId…" : "填好包名并选择所属端后，这里显示平台分配的 appId"}
+                </span>
               )}
             </Form.Item>
             <div style={{ background: "#f6f8fa", border: "1px solid #e8e8e8", borderRadius: 6, padding: "10px 12px", fontFamily: "Menlo, monospace", fontSize: 12, whiteSpace: "pre-wrap", color: "#595959" }}>

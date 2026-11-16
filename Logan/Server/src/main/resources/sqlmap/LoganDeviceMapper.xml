@@ -37,6 +37,17 @@
         <result column="last_poll_time" jdbcType="BIGINT" property="lastPollTime"/>
         <result column="poll_count" jdbcType="BIGINT" property="pollCount"/>
         <result column="pending_commands" jdbcType="INTEGER" property="pendingCommands"/>
+        <result column="device_info" jdbcType="LONGVARCHAR" property="deviceInfo"/>
+        <result column="device_info_time" jdbcType="BIGINT" property="deviceInfoTime"/>
+    </resultMap>
+
+    <resultMap id="deviceInfoMap" type="com.meituan.logan.web.dto.LoganDeviceInfoDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="device_id" jdbcType="VARCHAR" property="deviceId"/>
+        <result column="platform" jdbcType="INTEGER" property="platform"/>
+        <result column="info" jdbcType="LONGVARCHAR" property="info"/>
+        <result column="report_time" jdbcType="BIGINT" property="reportTime"/>
     </resultMap>
 
     <insert id="insertCommand" parameterType="com.meituan.logan.web.dto.LoganDeviceCommandDTO"
@@ -134,6 +145,7 @@
             FROM logan_task WHERE app_id = #{appId} GROUP BY app_id, device_id
         ) tk ON tk.app_id = d.app_id AND tk.device_id = d.device_id
         LEFT JOIN logan_device_poll p ON p.app_id = d.app_id AND p.device_id = d.device_id
+        LEFT JOIN logan_device_info di ON di.app_id = d.app_id AND di.device_id = d.device_id
         LEFT JOIN (
             SELECT app_id, device_id, COUNT(*) AS pending_commands FROM logan_device_command
             WHERE app_id = #{appId} AND status IN ("pending","delivered") GROUP BY app_id, device_id
@@ -156,7 +168,8 @@
         COALESCE(tk.log_count, 0) AS log_count, tk.last_log_time,
         COALESCE(c.crash_count, 0) AS crash_count, c.last_crash_time,
         p.last_poll_time, COALESCE(p.poll_count, 0) AS poll_count,
-        COALESCE(pc.pending_commands, 0) AS pending_commands
+        COALESCE(pc.pending_commands, 0) AS pending_commands,
+        di.info AS device_info, di.report_time AS device_info_time
         <include refid="deviceBase"/>
         ORDER BY GREATEST(COALESCE(p.last_poll_time, 0), COALESCE(tk.last_log_time, 0), COALESCE(c.last_crash_time, 0)) DESC,
         d.device_id ASC
@@ -165,6 +178,18 @@
 
     <select id="countDevices" resultType="int">
         SELECT COUNT(*) <include refid="deviceBase"/>
+    </select>
+
+    <insert id="upsertDeviceInfo">
+        INSERT INTO logan_device_info
+        (app_id, device_id, platform, info, report_time)
+        VALUES (#{appId}, #{deviceId}, #{platform}, #{info}, #{reportTime})
+        ON DUPLICATE KEY UPDATE
+        platform = #{platform}, info = #{info}, report_time = #{reportTime}
+    </insert>
+
+    <select id="selectDeviceInfo" resultMap="deviceInfoMap">
+        SELECT * FROM logan_device_info WHERE app_id = #{appId} AND device_id = #{deviceId} LIMIT 1
     </select>
 
 </mapper>

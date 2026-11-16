@@ -280,3 +280,30 @@ export function cancelDeviceCommandApi(body) {
 export function fetchDeviceCommandsApi(params) {
   return instance.get("/logan/device/command/list.json", { params });
 }
+
+
+export function fetchDeviceInfoApi(params) {
+  return instance.get("/logan/device/info.json", { params });
+}
+
+// ---- 符号表治理（上传 mapping/dSYM/so/sourcemap + 平台侧真反混淆）----
+export function uploadSymbolApi(body) {
+  return instance.post("/logan/symbol/upload.json", body);
+}
+
+export function fetchSymbolListApi(params) {
+  return instance.get("/logan/symbol/list.json", { params });
+}
+
+export function deleteSymbolApi(body) {
+  return instance.post("/logan/symbol/delete.json", body);
+}
+
+export function applySymbolApi(body) {
+  return instance.post("/logan/symbol/apply.json", body);
+}
+
+// ---- 应用创建：appId 由平台生成（包名+端后缀，撞名自动让位），用户不手填 ----
+export function prepareAppApi(body) {
+  return instance.post("/logan/app/prepare.json", body);
+}

@@ -32,7 +32,7 @@ public class LoganDeviceController {
 
     private static final Logger LOGGER = Logger.getLogger(LoganDeviceController.class);
 
-    private static final Set<String> ACTIONS = new HashSet<String>(Arrays.asList("upload_logs", "ping"));
+    private static final Set<String> ACTIONS = new HashSet<String>(Arrays.asList("upload_logs", "ping", "collect_info"));
 
     @Resource
     private LoganDeviceService deviceService;
@@ -57,7 +57,7 @@ public class LoganDeviceController {
             return LoganResponse.badParam("deviceId required");
         }
         if (StringUtils.isBlank(action) || !ACTIONS.contains(action.trim())) {
-            return LoganResponse.badParam("action must be upload_logs or ping");
+            return LoganResponse.badParam("action must be upload_logs / ping / collect_info");
         }
         String param = pick(body, request, "param");
         String note = pick(body, request, "note");
@@ -183,6 +183,64 @@ public class LoganDeviceController {
             LOGGER.error("list commands failed", e);
             return LoganResponse.exception("list failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * 客户端上送设备基本信息（内存/磁盘/CPU/GPU/电量/网络…）。
+     * 由 collect_info 命令触发，也可在每次启动随心跳顺带上报。要求 appId 已登记。
+     */
+    @RequestMapping(value = "/info/report.json", method = RequestMethod.POST)
+    @ResponseBody
+    public LoganResponse<Boolean> reportInfo(HttpServletRequest request) {
+        Map<String, Object> body = readBody(request);
+        String appId = headerOr(pick(body, request, "appId"), request.getHeader("appId"));
+        String deviceId = headerOr(pick(body, request, "deviceId"), request.getHeader("deviceId"));
+        String info = pick(body, request, "info");
+        if (StringUtils.isBlank(appId)) {
+            return LoganResponse.badParam("appId required");
+        }
+        if (!AppGuard.registered(appService, appId.trim())) {
+            return LoganResponse.badParam(AppGuard.MSG);
+        }
+        if (StringUtils.isBlank(deviceId)) {
+            return LoganResponse.badParam("deviceId required");
+        }
+        if (StringUtils.isBlank(info)) {
+            return LoganResponse.badParam("info required");
+        }
+        Integer platform = pickInt(body, request, "platform");
+        boolean ok = deviceService.reportDeviceInfo(appId.trim(), deviceId.trim(), platform, info);
+        return ok ? LoganResponse.success(Boolean.TRUE)
+                : LoganResponse.badParam("info rejected (need a JSON object, max 64KB)");
+    }
+
+    /** 读取某设备最新设备信息快照（控制台展示）。 */
+    @RequestMapping(value = "/info.json", method = { RequestMethod.GET, RequestMethod.POST })
+    @ResponseBody
+    public LoganResponse<Map<String, Object>> info(HttpServletRequest request) {
+        String appId = pick(null, request, "appId");
+        String deviceId = pick(null, request, "deviceId");
+        if (StringUtils.isBlank(appId) || StringUtils.isBlank(deviceId)) {
+            return LoganResponse.badParam("appId and deviceId required");
+        }
+        Map<String, Object> map = new HashMap<String, Object>();
+        com.meituan.logan.web.dto.LoganDeviceInfoDTO dto = deviceService.deviceInfo(appId.trim(), deviceId.trim());
+        if (dto == null) {
+            map.put("info", null);
+            map.put("reportTime", null);
+            map.put("note", "该设备还没有上报过设备信息（客户端 SDK 需接入 LoganDeviceInfo，或平台下发 collect_info 命令）");
+            return LoganResponse.success(map);
+        }
+        Object parsed = null;
+        try {
+            parsed = JSON.parseObject(dto.getInfo());
+        } catch (Exception e) {
+            parsed = dto.getInfo();
+        }
+        map.put("info", parsed);
+        map.put("reportTime", Long.valueOf(dto.getReportTime()));
+        map.put("platform", Integer.valueOf(dto.getPlatform()));
+        return LoganResponse.success(map);
     }
 
     private static String pick(Map<String, Object> body, HttpServletRequest request, String key) {

@@ -1,6 +1,7 @@
 package com.meituan.logan.web.mapper;
 
 import com.meituan.logan.web.dto.LoganDeviceCommandDTO;
+import com.meituan.logan.web.dto.LoganDeviceInfoDTO;
 import com.meituan.logan.web.dto.LoganDeviceViewDTO;
 import org.apache.ibatis.annotations.Param;
 
@@ -53,4 +54,14 @@ public interface LoganDeviceMapper {
             @Param("keyword") String keyword, @Param("limit") int limit, @Param("offset") int offset);
 
     int countDevices(@Param("appId") String appId, @Param("keyword") String keyword);
+
+    // ---- 设备基本信息（用户要求：拉日志时顺带采集设备状态） ----
+
+    /** 一设备一行覆盖更新。 */
+    int upsertDeviceInfo(@Param("appId") String appId, @Param("deviceId") String deviceId,
+            @Param("platform") int platform, @Param("info") String info,
+            @Param("reportTime") long reportTime);
+
+    LoganDeviceInfoDTO selectDeviceInfo(@Param("appId") String appId,
+            @Param("deviceId") String deviceId);
 }

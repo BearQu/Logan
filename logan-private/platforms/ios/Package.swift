@@ -55,7 +55,8 @@ let package = Package(
                 .headerSearchPath("../../ThirdParty/Clogan"),
             ],
             linkerSettings: [
-                .linkedFramework("Security")
+                .linkedFramework("Security"),
+                .linkedFramework("UIKit", .when(platforms: [.iOS]))
             ]
         ),
     ]

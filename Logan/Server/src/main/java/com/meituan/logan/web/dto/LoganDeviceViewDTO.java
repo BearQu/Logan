@@ -44,6 +44,12 @@ public class LoganDeviceViewDTO {
     /** 待领取/已领取未回执的命令数 */
     private int pendingCommands;
 
+    /** 设备基本信息最新快照 JSON（内存/磁盘/CPU/GPU/电量/网络…），由客户端上送，无则 null */
+    private String deviceInfo;
+
+    /** 设备信息最近一次上报时间 */
+    private Long deviceInfoTime;
+
     /** 心跳在阈值内视为在线（服务端算，前端直接用） */
     private boolean online;
 }

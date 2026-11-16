@@ -30,6 +30,8 @@ typedef void (^LoganCommandHandler)(NSString *action, long long commandId, NSStr
 /// 启动后台轮询（幂等）；冷启动调用一次即可，首次延迟 8 秒避开启动高峰。
 + (void)start;
 
+/// 立即上报一次设备信息快照（平台「采集设备信息」按钮下发 collect_info 时 SDK 内部调用；宿主也可主动调）。
++ (void)reportDeviceInfoNow;
 + (void)stop;
 
 @end

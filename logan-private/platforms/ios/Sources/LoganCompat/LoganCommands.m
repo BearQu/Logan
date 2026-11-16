@@ -3,6 +3,7 @@
 //  Logan PoC —— 平台主动拉日志的客户端轮询器（零第三方依赖，仅 NSURLSession）。
 //
 #import "LoganCommands.h"
+#import "LoganDeviceInfo.h"
 
 static NSString *gBaseUrl = nil;
 static NSString *gAppId = nil;
@@ -13,6 +14,8 @@ static NSString *gAuthHeader = nil;
 static LoganCommandHandler gHandler = nil;
 static NSTimeInterval gInterval = 60;
 static BOOL gRunning = NO;
+static BOOL gLoganDiInfoReported = NO;
+static BOOL gLoganDiInfoInFlight = NO;
 static NSTimer *gTimer = nil;
 
 static NSMutableURLRequest *LoganCmdRequest(NSString *path) {
@@ -48,6 +51,38 @@ static void LoganCmdPost(NSString *path, NSDictionary *body, void (^done)(NSDict
     }] resume];
 }
 
+
+static void LoganCmdAck(long long commandId, BOOL ok, NSString *note);
+
+/// 设备信息快照上报（平台侧只接受合法 JSON 对象字符串，>64KB 会被拒）。
+/// trigger=boot 随心跳顺带一次；trigger=command 由平台 collect_info 命令触发。
+static void LoganDiReportInfo(long long commandId, NSString *trigger) {
+    if (gAppId.length == 0 || gDeviceId.length == 0) { return; }
+    if (gLoganDiInfoInFlight) { return; }
+    gLoganDiInfoInFlight = YES;
+    NSString *json = [LoganDeviceInfo snapshotJSON];
+    if (json.length == 0) {
+        gLoganDiInfoInFlight = NO;
+        NSLog(@"[LoganCommands] device info snapshot empty, skip trigger=%@", trigger);
+        if (commandId > 0) { LoganCmdAck(commandId, NO, @"snapshot empty"); }
+        return;
+    }
+    NSMutableDictionary *body = [NSMutableDictionary dictionary];
+    body[@"appId"] = gAppId;
+    body[@"deviceId"] = gDeviceId;
+    body[@"platform"] = @2;
+    if (gAppVersion.length > 0) { body[@"appVersion"] = gAppVersion; }
+    if (gBuildVersion.length > 0) { body[@"buildVersion"] = gBuildVersion; }
+    body[@"sdkVersion"] = @"0.1.0";
+    body[@"trigger"] = (trigger != nil ? trigger : @"command");
+    body[@"info"] = json; // 以字符串上送，服务端 String.valueOf 原样收下并校验 JSON
+    LoganCmdPost(@"/logan/device/info/report.json", body, ^(NSDictionary *resp) {
+        gLoganDiInfoInFlight = NO;
+        BOOL ok = (resp != nil && [resp[@"code"] integerValue] == 200);
+        NSLog(@"[LoganCommands] device info report trigger=%@ ok=%d bytes=%lu", trigger, ok, (unsigned long)json.length);
+        if (commandId > 0) { LoganCmdAck(commandId, ok, ok ? @"info reported" : @"report failed"); }
+    });
+}
 static void LoganCmdRunNext(NSArray *cmds, NSUInteger i);
 
 static void LoganCmdAck(long long commandId, BOOL ok, NSString *note) {
@@ -73,6 +108,12 @@ static void LoganCmdRunNext(NSArray *cmds, NSUInteger i) {
     NSString *param = [cmd[@"param"] isKindOfClass:[NSString class]] ? (NSString *)cmd[@"param"] : nil;
     if (cid <= 0) { LoganCmdRunNext(cmds, i + 1); return; }
     NSLog(@"[LoganCommands] command received id=%lld action=%@", cid, action);
+    if ([action isEqualToString:@"collect_info"]) {
+        // 设备信息采集是 SDK 自身职责，不下放宿主
+        LoganDiReportInfo(cid, @"command");
+        LoganCmdRunNext(cmds, i + 1);
+        return;
+    }
     LoganCommandHandler handler = gHandler;
     if (handler == nil) { LoganCmdSettle(cid, NO, @"no handler", cmds, i); return; }
     __block BOOL settled = NO;
@@ -98,6 +139,10 @@ static void LoganCmdPollOnce(void) {
     if (gAppVersion.length > 0) { body[@"appVersion"] = gAppVersion; }
     if (gBuildVersion.length > 0) { body[@"buildVersion"] = gBuildVersion; }
     body[@"sdkVersion"] = @"0.1.0";
+    if (!gLoganDiInfoReported) {
+        gLoganDiInfoReported = YES;
+        LoganDiReportInfo(0, @"boot"); // 冷启动随心跳带一次，平台设备清单立即有数据
+    }
     LoganCmdPost(@"/logan/device/poll.json", body, ^(NSDictionary *json) {
         if (json == nil) { return; }
         if ([json[@"code"] integerValue] != 200) { return; }
@@ -158,6 +203,10 @@ static void LoganCmdPollOnce(void) {
     });
 }
 
++ (void)reportDeviceInfoNow {
+    gLoganDiInfoReported = YES;
+    LoganDiReportInfo(0, @"manual");
+}
 + (void)stop {
     @synchronized ([LoganCommands class]) {
         gRunning = NO;

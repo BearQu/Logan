@@ -15,9 +15,10 @@ services:
     mem_limit: 700m
     environment:
       # 图标等应用素材落盘目录，与容器生命周期解耦，重建镜像不丢
-      JAVA_OPTS: "-Xms128m -Xmx384m -Dlogan.app.dir=/opt/logan-app-icons -Dfile.encoding=UTF-8"
+      JAVA_OPTS: "-Xms128m -Xmx384m -Dlogan.app.dir=/opt/logan-app-icons -Dlogan.symbol.dir=/opt/logan-symbols -Dfile.encoding=UTF-8"
     volumes:
       - ./data/app-icons:/opt/logan-app-icons
+      - ./data/symbols:/opt/logan-symbols
     ports: ["127.0.0.1:18888:8080"]
     networks: [logan-net]
     depends_on: { db: { condition: service_started } }

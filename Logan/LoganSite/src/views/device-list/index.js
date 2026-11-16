@@ -1,11 +1,12 @@
 import React, { Component } from "react";
 import { connect } from "react-redux";
 import {
-  Card, Table, Tag, Button, Input, Tooltip, Badge, message, Modal, Empty, Spin,
+  Card, Table, Tag, Button, Input, Tooltip, Badge, message, Modal, Empty, Spin, Drawer, Descriptions,
 } from "antd";
 import moment from "moment";
 import {
   fetchDeviceListApi, dispatchDeviceCommandApi, cancelDeviceCommandApi, fetchDeviceCommandsApi,
+  fetchDeviceInfoApi,
 } from "../../common/api";
 import { getCurrentAppId, ensureApp, subscribe as subscribeApp } from "../../common/currentApp";
 
@@ -19,7 +20,7 @@ const PLATFORM_META = {
 };
 
 const COMMAND_STATUS_META = {
-  pending: { text: "待领取", color: "default", tip: "等设备下次轮询领取（客户端默认 60s 一次）" },
+  pending: { text: "待领取", color: "gold", tip: "等设备下次轮询领取（客户端默认 60s 一次）" },
   delivered: { text: "已下发", color: "blue", tip: "已交给客户端，等它执行完回报" },
   acked: { text: "已完成", color: "green", tip: "客户端确认执行成功" },
   failed: { text: "执行失败", color: "red", tip: "客户端回报失败" },
@@ -31,6 +32,7 @@ const COMMAND_STATUS_META = {
 const ACTION_META = {
   upload_logs: "拉取日志",
   ping: "连通性测试",
+  collect_info: "采集设备信息",
 };
 
 function fmtTime(v) {
@@ -61,6 +63,10 @@ class DeviceList extends Component {
     commandLoading: false,
     confirmVisible: false,
     confirmTarget: null,
+    infoDevice: null,
+    infoData: null,
+    infoLoading: false,
+    collecting: null,
   };
 
   timer = null;
@@ -164,6 +170,66 @@ class DeviceList extends Component {
       .catch(() => {});
   };
 
+  // 「采集设备信息」：走同一条轮询命令通道，SDK 侧内置采集（宿主无需实现），回来说明它真的采到了才 ack。
+  doCollect = (row) => {
+    this.setState({ collecting: row.deviceId });
+    dispatchDeviceCommandApi({
+      appId: this.state.appId,
+      deviceId: row.deviceId,
+      action: "collect_info",
+      note: "控制台手动采集设备信息",
+      operator: "console",
+    })
+      .then(() => {
+        message.success("采集命令已下发，等设备下次轮询执行（通常 1 分钟内）");
+        this.setState({ collecting: null });
+        this.load(true);
+      })
+      .catch(() => this.setState({ collecting: null }));
+  };
+
+  showInfo = (row) => {
+    this.setState({ infoDevice: row.deviceId, infoLoading: true, infoData: null });
+    fetchDeviceInfoApi({ appId: this.state.appId, deviceId: row.deviceId })
+      .then((data) => this.setState({ infoData: data || null, infoLoading: false }))
+      .catch(() => this.setState({ infoData: null, infoLoading: false }));
+  };
+
+  closeInfo = () => this.setState({ infoDevice: null, infoData: null });
+
+  INFO_LABELS = {
+    os: "系统", osVersion: "系统版本", machine: "机型标识", model: "型号",
+    brand: "品牌", manufacture: "厂商", manufacturer: "厂商", deviceName: "设备名", abi: "ABI", sdkApiVersion: "API等级",
+    appVersion: "应用版本", buildVersion: "构建号", bundleIdentifier: "包名", bundleName: "包名",
+    cpuCount: "CPU核数", cpuUsagePercent: "CPU占用%", systemCpuUsagePercent: "系统CPU%", activeProcessorCount: "活动核数", processorCount: "核数",
+    totalMemBytes: "总内存", freeMemBytes: "空闲内存", availMemBytes: "可用内存", wiredMemBytes: "系统占用内存", compressedMemBytes: "压缩内存",
+    appPhysFootprintBytes: "应用占用内存", appPssKb: "应用PSS(KB)", memRssLimitBytes: "内存上限",
+    dataTotalBytes: "存储总量", dataAvailBytes: "存储可用", dataUsedBytes: "存储已用", diskUsagePercent: "存储占用%",
+    batteryLevelPercent: "电量%", batteryState: "充电状态", batteryTemperature: "电池温度(0.1℃)",
+    thermalState: "温控等级", network: "网络", networkAvailable: "网络可用", screenScale: "屏幕倍率",
+    screenWidthPt: "屏幕宽", screenHeightPt: "屏幕高", screenWidth: "屏幕宽", screenHeight: "屏幕高",
+    timezone: "时区", locale: "语言", language: "语言", uptimeSeconds: "开机时长(秒)", collectedAt: "采集时间",
+  };
+
+  infoEntries = (info) => {
+    if (!info || typeof info !== "object") return [];
+    var self = this;
+    var keys = Object.keys(info);
+    var pri = keys.filter(function (k) { return self.INFO_LABELS[k]; });
+    var rest = keys.filter(function (k) { return !self.INFO_LABELS[k]; });
+    return pri.concat(rest).map(function (k) {
+      var text = info[k];
+      if (/Bytes$/.test(k) && typeof text === "number") {
+        text = (text / 1024 / 1024).toFixed(1) + " MB";
+      } else if (typeof text === "boolean") {
+        text = text ? "是" : "否";
+      } else if (typeof text === "object" && text !== null) {
+        text = JSON.stringify(text);
+      }
+      return { key: k, label: self.INFO_LABELS[k] || k, text: String(text) };
+    });
+  };
+
   gotoCrashes = (row) => {
     window.location.hash = "#/crash-list?appId=" + encodeURIComponent(this.state.appId) +
       "&deviceId=" + encodeURIComponent(row.deviceId);
@@ -262,7 +328,7 @@ class DeviceList extends Component {
     {
       title: "操作",
       key: "ops",
-      width: 250,
+      width: 380,
       render: (v, row) => (
         <span>
           <Button
@@ -274,6 +340,8 @@ class DeviceList extends Component {
           >
             拉取日志
           </Button>
+          <Button size="small" style={{ marginLeft: 8 }} loading={this.state.collecting === row.deviceId} onClick={() => this.doCollect(row)}>采集设备信息</Button>
+          <Button size="small" style={{ marginLeft: 8 }} onClick={() => this.showInfo(row)}>设备信息</Button>
           <Button size="small" style={{ marginLeft: 8 }} onClick={() => this.doPing(row)}>测试连通</Button>
           <Button size="small" style={{ marginLeft: 8 }} onClick={() => this.loadCommands(row.deviceId)}>命令记录</Button>
         </span>
@@ -386,6 +454,32 @@ class DeviceList extends Component {
             </div>
           ) : null}
         </Modal>
+        <Drawer
+          title={<span>设备信息 <span style={{ color: "#8c8c8c", fontSize: 12, fontWeight: "normal", marginLeft: 10, fontFamily: "Menlo, monospace" }}>{this.state.infoDevice}</span></span>}
+          placement="right"
+          width={720}
+          visible={!!this.state.infoDevice}
+          onClose={this.closeInfo}
+        >
+          {this.state.infoLoading ? (
+            <Spin />
+          ) : !this.state.infoData || !this.state.infoData.info ? (
+            <Empty description={<span>该设备还没有上报过设备信息。<br />点列表里的「采集设备信息」下发命令，设备下次轮询（约 1 分钟内）会采集并回传。</span>} />
+          ) : (
+            <div>
+              <p style={{ color: "#8c8c8c" }}>
+                上报时间：{fmtTime(this.state.infoData.reportTime)}
+                <Button size="small" style={{ marginLeft: 12 }} loading={this.state.collecting === this.state.infoDevice} onClick={() => this.doCollect({ deviceId: this.state.infoDevice })}>重新采集</Button>
+                <Button size="small" style={{ marginLeft: 8 }} onClick={() => this.showInfo({ deviceId: this.state.infoDevice })}>刷新</Button>
+              </p>
+              <Descriptions size="small" column={2} bordered>
+                {this.infoEntries(this.state.infoData.info).map((row) => (
+                  <Descriptions.Item key={row.key} label={row.label}>{row.text}</Descriptions.Item>
+                ))}
+              </Descriptions>
+            </div>
+          )}
+        </Drawer>
       </Card>
     );
   }

@@ -5,4 +5,5 @@ export type { CrashEnvelope } from './src/main/ets/CrashEnvelope';
 export { LoganUpload, UploadConfig } from './src/main/ets/LoganUpload';
 export { LoganIdentity } from "./src/main/ets/LoganIdentity";
 export { LoganCommands, pollOnce } from './src/main/ets/LoganCommands';
+export { LoganDeviceInfo } from './src/main/ets/LoganDeviceInfo';
 export type { LoganCommandHandler } from './src/main/ets/LoganCommands';
