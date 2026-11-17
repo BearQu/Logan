@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+ "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganHttpMapper">
+
+    <sql id="detailCols">
+        id, app_id AS appId, device_id AS deviceId, platform, kind, method, url, host, path, status,
+        err_kind AS errKind, err_msg AS errMsg, duration_ms AS durationMs, connect_ms AS connectMs,
+        dns_ms AS dnsMs, ttfb_ms AS ttfbMs, req_bytes AS reqBytes, resp_bytes AS respBytes, slow,
+        page_url AS pageUrl, trace_id AS traceId, app_version AS appVersion,
+        build_version AS buildVersion, os AS os, os_version AS osVersion, brand, model,
+        network_type AS networkType, extra, occurred_at AS occurredAt, fingerprint,
+        dedup_hash AS dedupHash, add_time AS addTime
+    </sql>
+
+    <sql id="issueCols">
+        id, app_id AS appId, fingerprint, kind, method, host, path, status,
+        err_kind AS errKind, title, sample_url AS sampleUrl, sample_device_id AS sampleDeviceId,
+        sample_trace_id AS sampleTraceId, error_count AS errorCount, slow_count AS slowCount,
+        total_count AS totalCount, avg_ms AS avgMs, max_ms AS maxMs, last_err_msg AS lastErrMsg,
+        affected_devices AS affectedDevices, status_flag AS statusFlag, last_fix_note AS lastFixNote,
+        reopen_count AS reopenCount, llm_summary AS llmSummary, llm_severity AS llmSeverity,
+        first_seen AS firstSeen, last_seen AS lastSeen, add_time AS addTime,
+        assignee AS assignee, close_note AS closeNote
+    </sql>
+
+    <insert id="insertIgnore" parameterType="com.meituan.logan.web.dto.LoganHttpDTO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT IGNORE INTO logan_http
+        (app_id, device_id, platform, kind, method, url, host, path, status, err_kind, err_msg,
+         duration_ms, connect_ms, dns_ms, ttfb_ms, req_bytes, resp_bytes, slow, page_url, trace_id,
+         app_version, build_version, os, os_version, brand, model, network_type, extra,
+         occurred_at, fingerprint, dedup_hash, add_time)
+        VALUES (#{appId}, #{deviceId}, #{platform}, #{kind}, #{method}, #{url}, #{host}, #{path}, #{status}, #{errKind}, #{errMsg}, #{durationMs}, #{connectMs}, #{dnsMs}, #{ttfbMs}, #{reqBytes}, #{respBytes}, #{slow}, #{pageUrl}, #{traceId}, #{appVersion}, #{buildVersion}, #{os}, #{osVersion}, #{brand}, #{model}, #{networkType}, #{extra}, #{occurredAt}, #{fingerprint}, #{dedupHash}, #{addTime})
+    </insert>
+
+    <select id="selectById" resultType="com.meituan.logan.web.dto.LoganHttpDTO">
+        SELECT <include refid="detailCols"/> FROM logan_http WHERE id = #{id}
+    </select>
+
+    <select id="list" resultType="com.meituan.logan.web.dto.LoganHttpDTO">
+        SELECT <include refid="detailCols"/> FROM logan_http
+        <where>
+            app_id = #{appId}
+            <if test="deviceId != null and deviceId != ''"> AND device_id = #{deviceId}</if>
+            <if test="kind != null and kind != ''"> AND kind = #{kind}</if>
+            <if test="host != null and host != ''"> AND host = #{host}</if>
+            <if test="path != null and path != ''"> AND path = #{path}</if>
+            <if test="errKind != null and errKind != ''"> AND err_kind = #{errKind}</if>
+            <if test="minStatus != null"> AND status &gt;= #{minStatus}</if>
+            <if test="maxStatus != null"> AND status &lt;= #{maxStatus}</if>
+            <if test="slowOnly != null and slowOnly"> AND slow = 1</if>
+            <if test="beginTime != null"> AND occurred_at &gt;= #{beginTime}</if>
+            <if test="endTime != null"> AND occurred_at &lt;= #{endTime}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (url LIKE CONCAT('%', #{keyword}, '%') OR err_msg LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY occurred_at DESC LIMIT #{limit}
+    </select>
+
+    <select id="listAround" resultType="com.meituan.logan.web.dto.LoganHttpDTO">
+        SELECT <include refid="detailCols"/> FROM logan_http
+        WHERE app_id = #{appId} AND device_id = #{deviceId}
+          AND occurred_at &gt;= #{beginTime} AND occurred_at &lt;= #{endTime}
+        ORDER BY occurred_at ASC LIMIT #{limit}
+    </select>
+
+    <select id="summary" resultType="java.util.HashMap">
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN slow = 1 THEN 1 ELSE 0 END) AS slowCount,
+               SUM(CASE WHEN status &gt;= 400 THEN 1 ELSE 0 END) AS httpErrorCount,
+               SUM(CASE WHEN err_kind IS NOT NULL THEN 1 ELSE 0 END) AS transportErrorCount,
+               AVG(duration_ms) AS avgMs,
+               MAX(duration_ms) AS maxMs,
+               COUNT(DISTINCT device_id) AS deviceCount
+        FROM logan_http
+        <where>
+            app_id = #{appId}
+            <if test="beginTime != null"> AND occurred_at &gt;= #{beginTime}</if>
+            <if test="endTime != null"> AND occurred_at &lt;= #{endTime}</if>
+        </where>
+    </select>
+
+    <insert id="upsertIssue" parameterType="com.meituan.logan.web.dto.LoganHttpIssueDTO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO logan_http_issue
+        (app_id, fingerprint, kind, method, host, path, status, err_kind, title, sample_url,
+         sample_device_id, sample_trace_id, error_count, slow_count, total_count, avg_ms, max_ms,
+         last_err_msg, affected_devices, status_flag, first_seen, last_seen, add_time)
+        VALUES (#{appId}, #{fingerprint}, #{kind}, #{method}, #{host}, #{path}, #{status}, #{errKind}, #{title}, #{sampleUrl}, #{sampleDeviceId}, #{sampleTraceId}, #{errorCount}, #{slowCount}, #{totalCount}, #{avgMs}, #{maxMs}, #{lastErrMsg}, #{affectedDevices}, #{statusFlag}, #{firstSeen}, #{lastSeen}, #{addTime})
+        ON DUPLICATE KEY UPDATE
+            total_count = total_count + 1,
+            error_count = error_count + VALUES(error_count),
+            slow_count = slow_count + VALUES(slow_count),
+            avg_ms = VALUES(avg_ms),
+            max_ms = GREATEST(max_ms, VALUES(max_ms)),
+            last_err_msg = COALESCE(VALUES(last_err_msg), last_err_msg),
+            sample_url = VALUES(sample_url),
+            sample_device_id = VALUES(sample_device_id),
+            sample_trace_id = VALUES(sample_trace_id),
+            title = VALUES(title),
+            last_seen = GREATEST(last_seen, VALUES(last_seen))
+    </insert>
+
+    <select id="listIssues" resultType="com.meituan.logan.web.dto.LoganHttpIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_http_issue
+        <where>
+            app_id = #{appId}
+            <if test="statusFlag != null"> AND status_flag = #{statusFlag}</if>
+            <if test="kind != null and kind != ''"> AND kind = #{kind}</if>
+            <if test="errKind != null and errKind != ''"> AND err_kind = #{errKind}</if>
+        </where>
+        ORDER BY last_seen DESC LIMIT #{limit}
+    </select>
+
+    <select id="selectIssueByFingerprint" resultType="com.meituan.logan.web.dto.LoganHttpIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_http_issue
+        WHERE app_id = #{appId} AND fingerprint = #{fingerprint} LIMIT 1
+    </select>
+
+    <select id="selectIssueById" resultType="com.meituan.logan.web.dto.LoganHttpIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_http_issue WHERE id = #{id}
+    </select>
+
+    <update id="updateIssueStatus">
+        UPDATE logan_http_issue
+        <set>
+            status_flag = #{statusFlag},
+            <if test="lastFixNote != null">last_fix_note = #{lastFixNote},</if>
+            <if test="reopenCount != null">reopen_count = #{reopenCount},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateIssueLlm">
+        UPDATE logan_http_issue SET llm_summary = #{llmSummary}, llm_severity = #{llmSeverity}
+        WHERE id = #{id}
+    </update>
+
+
+    <update id="updateIssueAssign" parameterType="map">
+        UPDATE logan_http_issue SET assignee = #{assignee} WHERE id = #{id}
+    </update>
+
+    <update id="updateIssueCloseNote" parameterType="map">
+        UPDATE logan_http_issue SET close_note = #{closeNote} WHERE id = #{id}
+    </update>
+</mapper>
+

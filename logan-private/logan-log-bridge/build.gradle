@@ -7,6 +7,8 @@ dependencies {
     // 与宿主 AGP 同版本加载（宿主 buildscript 已带 gradle-api + asm）
     compileOnly 'com.android.tools.build:gradle:8.10.0'
     implementation 'org.ow2.asm:asm:9.6'
+// catch 注入规则用树模式（TryCatchBlockNode/InsnNode…），树 API 在独立工件 asm-tree 里
+implementation 'org.ow2.asm:asm-tree:9.6'
 }
 gradlePlugin {
     plugins {

@@ -77,4 +77,12 @@ public interface LoganCrashMapper {
 
     /** 实例列表（不含 content 大字段，列表页用）。 */
     List<com.meituan.logan.web.dto.LoganCrashDTO> queryInstancesByFp(@Param("appId") String appId, @Param("fingerprint") String fingerprint, @Param("limit") int limit);
+
+    /** 处置闭环：指派处理人。 */
+    int updateIssueAssign(@Param("id") long id, @Param("assignee") String assignee,
+                          @Param("assignTime") long assignTime);
+
+    /** 处置闭环：写处置结论（含状态变更时间）。 */
+    int updateIssueClose(@Param("id") long id, @Param("closeNote") String closeNote,
+                         @Param("closeTime") Long closeTime);
 }

@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+ "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganOverviewMapper">
+
+    <!--
+      异常概览看板专用只读聚合。统一筛选键（q）：appId / platform / appVersion / beginTime / endTime。
+      时间列按通道不同：logan_task.add_time、logan_device_poll.last_poll_time、
+      logan_crash.crash_time、logan_http.occurred_at，全部毫秒 bigint。
+    -->
+
+    <sql id="crashFilter">
+        <if test="q.appId != null and q.appId != ''">AND c.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND c.platform=#{q.platform}</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND c.app_version=#{q.appVersion}</if>
+        AND c.crash_time BETWEEN #{q.beginTime} AND #{q.endTime}
+    </sql>
+
+    <sql id="taskFilter">
+        <if test="q.appId != null and q.appId != ''">AND t.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND t.platform=#{q.platform}</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND t.app_version=#{q.appVersion}</if>
+        AND t.add_time BETWEEN #{q.beginTime} AND #{q.endTime}
+    </sql>
+
+    <sql id="pollFilter">
+        <if test="q.appId != null and q.appId != ''">AND p.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND p.platform=#{q.platform}</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND p.app_version=#{q.appVersion}</if>
+        AND p.last_poll_time BETWEEN #{q.beginTime} AND #{q.endTime}
+    </sql>
+
+    <sql id="httpFilter">
+        <if test="q.appId != null and q.appId != ''">AND h.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND h.platform=#{q.platform}</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND h.app_version=#{q.appVersion}</if>
+        AND h.occurred_at BETWEEN #{q.beginTime} AND #{q.endTime}
+    </sql>
+
+    <!-- 联网设备数（Bugly 同口径：窗口内在任一上报通道出现过的去重设备） -->
+    <select id="countOnlineDevices" parameterType="map" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM (
+            SELECT t.device_id AS d FROM logan_task t WHERE 1=1
+            <include refid="taskFilter"/>
+            UNION
+            SELECT p.device_id AS d FROM logan_device_poll p WHERE 1=1
+            <include refid="pollFilter"/>
+            UNION
+            SELECT c.device_id AS d FROM logan_crash c WHERE 1=1
+            <include refid="crashFilter"/>
+            UNION
+            SELECT h.device_id AS d FROM logan_http h WHERE 1=1
+            <include refid="httpFilter"/>
+        ) u
+        WHERE u.d IS NOT NULL AND u.d &lt;&gt; ''
+    </select>
+
+    <!-- 崩溃 / ANR 分子；错误（非致命）由服务层判断 logan_error 表是否存在后单独查 -->
+    <select id="summaryCounts" parameterType="map" resultType="java.util.HashMap">
+        SELECT
+            (SELECT COUNT(*) FROM logan_crash c WHERE c.kind &lt;&gt; 'anr'
+                <include refid="crashFilter"/>) AS crashEvents,
+            (SELECT COUNT(DISTINCT c.device_id) FROM logan_crash c WHERE c.kind &lt;&gt; 'anr'
+                <include refid="crashFilter"/>) AS crashDevices,
+            (SELECT COUNT(DISTINCT c.fingerprint) FROM logan_crash c WHERE c.kind &lt;&gt; 'anr'
+                <include refid="crashFilter"/>) AS crashIssues,
+            (SELECT COUNT(*) FROM logan_crash c WHERE c.kind = 'anr'
+                <include refid="crashFilter"/>) AS anrEvents,
+            (SELECT COUNT(DISTINCT c.device_id) FROM logan_crash c WHERE c.kind = 'anr'
+                <include refid="crashFilter"/>) AS anrDevices,
+            (SELECT COUNT(DISTINCT c.fingerprint) FROM logan_crash c WHERE c.kind = 'anr'
+                <include refid="crashFilter"/>) AS anrIssues,
+            (SELECT COUNT(*) FROM logan_http h WHERE (h.status &gt;= 400 OR (h.err_kind IS NOT NULL AND h.err_kind &lt;&gt; ''))
+                <include refid="httpFilter"/>) AS httpFailed,
+            (SELECT COUNT(*) FROM logan_http h WHERE h.slow = 1
+                <include refid="httpFilter"/>) AS httpSlow
+    </select>
+
+    <select id="kindsBreakdown" parameterType="map" resultType="java.util.HashMap">
+        SELECT c.kind AS kind,
+               COUNT(*) AS events,
+               COUNT(DISTINCT c.device_id) AS devices,
+               COUNT(DISTINCT c.fingerprint) AS issues
+        FROM logan_crash c
+        WHERE 1=1
+        <include refid="crashFilter"/>
+        GROUP BY c.kind
+        ORDER BY events DESC
+    </select>
+
+    <!-- 趋势分桶：granularity=hour 用 '%Y-%m-%d %H:00'，day 用 '%Y-%m-%d'；tzOffsetMs 保证与服务器时区无关 -->
+    <select id="trendBuckets" parameterType="map" resultType="java.util.HashMap">
+        <!-- 只按数值桶分组，标签由服务层用固定时区格式化，彻底避开 MySQL 会话时区二义 -->
+        SELECT
+        <choose>
+            <when test="granularity == 'hour'">
+                (c.crash_time + #{q.tzOffsetMs}) DIV 3600000 * 3600000 - #{q.tzOffsetMs} AS bucketTime
+            </when>
+            <otherwise>
+                (c.crash_time + #{q.tzOffsetMs}) DIV 86400000 * 86400000 - #{q.tzOffsetMs} AS bucketTime
+            </otherwise>
+        </choose>
+               ,
+               c.kind AS kind,
+               COUNT(*) AS events,
+               COUNT(DISTINCT c.device_id) AS devices
+        FROM logan_crash c
+        WHERE 1=1
+        <include refid="crashFilter"/>
+        GROUP BY bucketTime, c.kind
+        ORDER BY bucketTime</select>
+
+    <select id="topIssues" parameterType="map" resultType="java.util.HashMap">
+        SELECT i.id AS issueId,
+               i.app_id AS appId,
+               i.platform AS platform,
+               i.kind AS kind,
+               i.fingerprint AS fingerprint,
+               i.signal_info AS signalInfo,
+               i.top_frames AS topFrames,
+               i.llm_summary AS llmSummary,
+               i.llm_severity AS llmSeverity,
+               i.status AS status,
+               i.reopen_count AS reopenCount,
+               i.first_crash_time AS firstCrashTime,
+               (SELECT COUNT(*) FROM logan_crash c
+                 WHERE c.app_id = i.app_id AND c.fingerprint = i.fingerprint
+                   <if test="q.appId != null and q.appId != ''">AND c.app_id=#{q.appId}</if>
+                   <if test="q.platform != null">AND c.platform=#{q.platform}</if>
+                   <if test="q.appVersion != null and q.appVersion != ''">AND c.app_version=#{q.appVersion}</if>
+                   AND c.crash_time BETWEEN #{q.beginTime} AND #{q.endTime}) AS windowEvents,
+               (SELECT COUNT(DISTINCT c.device_id) FROM logan_crash c
+                 WHERE c.app_id = i.app_id AND c.fingerprint = i.fingerprint
+                   <if test="q.appId != null and q.appId != ''">AND c.app_id=#{q.appId}</if>
+                   <if test="q.platform != null">AND c.platform=#{q.platform}</if>
+                   <if test="q.appVersion != null and q.appVersion != ''">AND c.app_version=#{q.appVersion}</if>
+                   AND c.crash_time BETWEEN #{q.beginTime} AND #{q.endTime}) AS windowDevices,
+               (SELECT MAX(c.crash_time) FROM logan_crash c
+                 WHERE c.app_id = i.app_id AND c.fingerprint = i.fingerprint
+                   AND c.crash_time BETWEEN #{q.beginTime} AND #{q.endTime}) AS lastWindowTime
+        FROM logan_crash_issue i
+        WHERE EXISTS (SELECT 1 FROM logan_crash c2
+                       WHERE c2.app_id = i.app_id AND c2.fingerprint = i.fingerprint
+                         <if test="q.appId != null and q.appId != ''">AND c2.app_id=#{q.appId}</if>
+                         <if test="q.platform != null">AND c2.platform=#{q.platform}</if>
+                         <if test="q.appVersion != null and q.appVersion != ''">AND c2.app_version=#{q.appVersion}</if>
+                         AND c2.crash_time BETWEEN #{q.beginTime} AND #{q.endTime})
+        <if test="q.status != null">AND i.status = #{q.status}</if>
+        ORDER BY windowEvents DESC, windowDevices DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countsByFingerprints" parameterType="map" resultType="java.util.HashMap">
+        SELECT c.fingerprint AS fingerprint,
+               COUNT(*) AS events,
+               COUNT(DISTINCT c.device_id) AS devices
+        FROM logan_crash c
+        WHERE c.crash_time BETWEEN #{beginTime} AND #{endTime}
+        <if test="q.appId != null and q.appId != ''">AND c.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND c.platform=#{q.platform}</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND c.app_version=#{q.appVersion}</if>
+        AND c.fingerprint IN
+        <foreach collection="fingerprints" item="fp" open="(" separator="," close=")">#{fp}</foreach>
+        GROUP BY c.fingerprint
+    </select>
+
+    <!-- 排行榜：dim=os|device|version，键与显示名都在 SQL 里定好，服务层只按 dim 传白名单值 -->
+    <select id="ranking" parameterType="map" resultType="java.util.HashMap">
+        SELECT
+        <choose>
+            <when test="dim == 'os'">
+                CONCAT(c.platform, ':', IFNULL(c.release_ver, '')) AS groupKey,
+                CONCAT(CASE c.platform WHEN 1 THEN 'Android ' WHEN 2 THEN 'iOS ' WHEN 3 THEN 'HarmonyOS ' ELSE 'other ' END,
+                       IFNULL(c.release_ver, '-')) AS label,
+                IFNULL(c.release_ver, '') AS value
+            </when>
+            <when test="dim == 'version'">
+                CONCAT(IFNULL(c.app_version, ''), '/', IFNULL(c.build_version, '')) AS groupKey,
+                CONCAT(IFNULL(c.app_version, '-'), '(', IFNULL(c.build_version, '-'), ')') AS label,
+                IFNULL(c.app_version, '') AS value
+            </when>
+            <otherwise>
+                CONCAT(IFNULL(c.brand, ''), '|', IFNULL(c.model, '')) AS groupKey,
+                CONCAT_WS(' ', NULLIF(c.brand, ''), NULLIF(c.model, '')) AS label,
+                IFNULL(c.brand, '') AS value
+            </otherwise>
+        </choose>
+               ,
+               COUNT(*) AS events,
+               COUNT(DISTINCT c.device_id) AS devices
+               ,
+               MIN(c.crash_time) AS firstTime,
+               MAX(c.crash_time) AS lastTime
+        FROM logan_crash c
+        WHERE 1=1
+        <include refid="crashFilter"/>
+        GROUP BY groupKey, label, value
+        HAVING label IS NOT NULL AND label &lt;&gt; ''
+               AND value IS NOT NULL AND value &lt;&gt; ''
+               AND groupKey NOT LIKE '%:'
+        ORDER BY events DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listVersions" parameterType="map" resultType="java.lang.String">
+        SELECT v FROM (
+            SELECT DISTINCT c.app_version AS v FROM logan_crash c
+             WHERE c.app_version IS NOT NULL AND c.app_version &lt;&gt; ''
+               <if test="q.appId != null and q.appId != ''">AND c.app_id=#{q.appId}</if>
+               <if test="q.platform != null">AND c.platform=#{q.platform}</if>
+             UNION
+            SELECT DISTINCT t.app_version AS v FROM logan_task t
+             WHERE t.app_version IS NOT NULL AND t.app_version &lt;&gt; ''
+               <if test="q.appId != null and q.appId != ''">AND t.app_id=#{q.appId}</if>
+               <if test="q.platform != null">AND t.platform=#{q.platform}</if>
+        ) x
+        ORDER BY v DESC
+        LIMIT 100
+    </select>
+</mapper>

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  非致命错误（错误分析）。列名与概览 LoganOverviewServiceImpl 里的统计 SQL 严格一致，
+  两边口径必须同：同一次上报既进明细也进聚合，概览的「错误率」才和列表对得上。
+-->
+<mapper namespace="com.meituan.logan.web.mapper.LoganErrorMapper">
+
+    <sql id="cols">
+        id AS id, app_id AS appId, device_id AS deviceId, platform AS platform, kind AS kind,
+        name AS name, message AS message, stack AS stack, page_url AS pageUrl, trace_id AS traceId,
+        app_version AS appVersion, build_version AS buildVersion, os AS os, os_version AS osVersion,
+        brand AS brand, model AS model, network_type AS networkType, fatal AS fatal, extra AS extra,
+        occurred_at AS occurredAt, fingerprint AS fingerprint, dedup_hash AS dedupHash, add_time AS addTime
+    </sql>
+
+    <sql id="issueCols">
+        id AS id, app_id AS appId, fingerprint AS fingerprint, platform AS platform, kind AS kind,
+        name AS name, title AS title, sample_message AS sampleMessage, sample_stack AS sampleStack,
+        sample_device_id AS sampleDeviceId, sample_trace_id AS sampleTraceId,
+        event_count AS eventCount, affected_devices AS affectedDevices,
+        first_seen AS firstSeen, last_seen AS lastSeen, status_flag AS statusFlag,
+        reopen_count AS reopenCount, last_fix_note AS lastFixNote, assignee AS assignee,
+        close_note AS closeNote, llm_summary AS llmSummary, llm_severity AS llmSeverity, add_time AS addTime
+    </sql>
+
+    <insert id="insertIgnore" parameterType="com.meituan.logan.web.dto.LoganErrorDTO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT IGNORE INTO logan_error
+        (app_id, device_id, platform, kind, name, message, stack, page_url, trace_id,
+         app_version, build_version, os, os_version, brand, model, network_type, fatal, extra,
+         occurred_at, fingerprint, dedup_hash, add_time)
+        VALUES (#{appId}, #{deviceId}, #{platform}, #{kind}, #{name}, #{message}, #{stack}, #{pageUrl}, #{traceId},
+         #{appVersion}, #{buildVersion}, #{os}, #{osVersion}, #{brand}, #{model}, #{networkType}, #{fatal}, #{extra},
+         #{occurredAt}, #{fingerprint}, #{dedupHash}, #{addTime})
+    </insert>
+
+    <select id="selectById" resultType="com.meituan.logan.web.dto.LoganErrorDTO">
+        SELECT <include refid="cols"/> FROM logan_error WHERE id = #{id}
+    </select>
+
+    <sql id="filterWhere">
+        <where>
+            app_id = #{q.appId}
+            <if test="q.platform != null"> AND platform = #{q.platform}</if>
+            <if test="q.kind != null and q.kind != ''"> AND kind = #{q.kind}</if>
+            <if test="q.appVersion != null and q.appVersion != ''"> AND app_version = #{q.appVersion}</if>
+            <if test="q.deviceId != null and q.deviceId != ''"> AND device_id = #{q.deviceId}</if>
+            <if test="q.brand != null and q.brand != ''"> AND brand = #{q.brand}</if>
+            <if test="q.model != null and q.model != ''"> AND model = #{q.model}</if>
+            <if test="q.name != null and q.name != ''"> AND name = #{q.name}</if>
+            <if test="q.beginTime != null"> AND occurred_at BETWEEN #{q.beginTime} AND #{q.endTime}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (name LIKE CONCAT('%',#{q.keyword},'%') OR message LIKE CONCAT('%',#{q.keyword},'%')
+                     OR stack LIKE CONCAT('%',#{q.keyword},'%'))
+            </if>
+        </where>
+    </sql>
+
+    <select id="list" resultType="com.meituan.logan.web.dto.LoganErrorDTO">
+        SELECT <include refid="cols"/> FROM logan_error
+        <include refid="filterWhere"/>
+        ORDER BY occurred_at DESC
+        <if test="q.offset != null"> LIMIT #{q.offset}, #{q.limit}</if>
+        <if test="q.offset == null"> LIMIT #{q.limit}</if>
+    </select>
+
+    <select id="countList" resultType="long">
+        SELECT COUNT(*) FROM logan_error
+        <include refid="filterWhere"/>
+    </select>
+
+    <select id="listAround" resultType="com.meituan.logan.web.dto.LoganErrorDTO">
+        SELECT <include refid="cols"/> FROM logan_error
+        WHERE app_id = #{appId} AND device_id = #{deviceId}
+          AND occurred_at BETWEEN #{beginTime} AND #{endTime}
+        ORDER BY occurred_at DESC LIMIT #{limit}
+    </select>
+
+    <select id="summary" resultType="map">
+        SELECT COUNT(*) AS events, COUNT(DISTINCT device_id) AS devices,
+               COUNT(DISTINCT fingerprint) AS issues
+        FROM logan_error
+        <where>
+            app_id = #{appId}
+            AND occurred_at BETWEEN #{beginTime} AND #{endTime}
+            <if test="platform != null"> AND platform = #{platform}</if>
+            <if test="appVersion != null and appVersion != ''"> AND app_version = #{appVersion}</if>
+        </where>
+    </select>
+
+    <select id="topNames" resultType="map">
+        SELECT name AS name, COUNT(*) AS events, COUNT(DISTINCT device_id) AS devices,
+               COUNT(DISTINCT fingerprint) AS issues, MAX(occurred_at) AS lastTime
+        FROM logan_error
+        <where>
+            app_id = #{appId}
+            AND occurred_at BETWEEN #{beginTime} AND #{endTime}
+            AND name IS NOT NULL AND name != ''
+            <if test="platform != null"> AND platform = #{platform}</if>
+            <if test="appVersion != null and appVersion != ''"> AND app_version = #{appVersion}</if>
+        </where>
+        GROUP BY name
+        ORDER BY events DESC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="upsertIssue" parameterType="com.meituan.logan.web.dto.LoganErrorIssueDTO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO logan_error_issue
+        (app_id, fingerprint, platform, kind, name, title, sample_message, sample_stack,
+         sample_device_id, sample_trace_id, event_count, affected_devices,
+         first_seen, last_seen, status_flag, reopen_count, add_time)
+        VALUES (#{appId}, #{fingerprint}, #{platform}, #{kind}, #{name}, #{title}, #{sampleMessage}, #{sampleStack},
+         #{sampleDeviceId}, #{sampleTraceId}, #{eventCount}, #{affectedDevices},
+         #{firstSeen}, #{lastSeen}, #{statusFlag}, #{reopenCount}, #{addTime})
+        ON DUPLICATE KEY UPDATE
+            event_count = event_count + 1,
+            sample_message = COALESCE(VALUES(sample_message), sample_message),
+            sample_stack = COALESCE(VALUES(sample_stack), sample_stack),
+            sample_device_id = VALUES(sample_device_id),
+            sample_trace_id = VALUES(sample_trace_id),
+            title = VALUES(title),
+            kind = VALUES(kind),
+            platform = VALUES(platform),
+            last_seen = GREATEST(last_seen, VALUES(last_seen)),
+            first_seen = LEAST(first_seen, VALUES(first_seen)),
+            affected_devices = VALUES(affected_devices)
+    </insert>
+
+    <select id="listIssues" resultType="com.meituan.logan.web.dto.LoganErrorIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_error_issue
+        <where>
+            app_id = #{q.appId}
+            <if test="q.statusFlag != null"> AND status_flag = #{q.statusFlag}</if>
+            <if test="q.kind != null and q.kind != ''"> AND kind = #{q.kind}</if>
+            <if test="q.platform != null"> AND platform = #{q.platform}</if>
+            <if test="q.assignee != null and q.assignee != ''"> AND assignee = #{q.assignee}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (name LIKE CONCAT('%',#{q.keyword},'%') OR title LIKE CONCAT('%',#{q.keyword},'%')
+                     OR fingerprint LIKE CONCAT('%',#{q.keyword},'%'))
+            </if>
+        </where>
+        ORDER BY last_seen DESC LIMIT #{q.limit}
+    </select>
+
+    <select id="selectIssueByFingerprint" resultType="com.meituan.logan.web.dto.LoganErrorIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_error_issue
+        WHERE app_id = #{appId} AND fingerprint = #{fingerprint} LIMIT 1
+    </select>
+
+    <select id="selectIssueById" resultType="com.meituan.logan.web.dto.LoganErrorIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_error_issue WHERE id = #{id}
+    </select>
+
+    <update id="updateIssueStatus">
+        UPDATE logan_error_issue
+        <set>
+            status_flag = #{statusFlag},
+            <if test="lastFixNote != null">last_fix_note = #{lastFixNote},</if>
+            <if test="reopenCount != null">reopen_count = #{reopenCount},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="queryIssuesWithoutSummary" resultType="com.meituan.logan.web.dto.LoganErrorIssueDTO">
+        SELECT <include refid="issueCols"/> FROM logan_error_issue
+        WHERE (llm_summary IS NULL OR llm_summary = '')
+          AND sample_stack IS NOT NULL AND sample_stack != ''
+        ORDER BY last_seen DESC LIMIT #{limit}
+    </select>
+
+    <update id="updateIssueLlm">
+        UPDATE logan_error_issue SET llm_summary = #{llmSummary}, llm_severity = #{llmSeverity}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateIssueAssign" parameterType="map">
+        UPDATE logan_error_issue SET assignee = #{assignee} WHERE id = #{id}
+    </update>
+
+    <update id="updateIssueCloseNote" parameterType="map">
+        UPDATE logan_error_issue SET close_note = #{closeNote} WHERE id = #{id}
+    </update>
+
+</mapper>

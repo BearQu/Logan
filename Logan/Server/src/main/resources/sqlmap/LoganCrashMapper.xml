@@ -194,7 +194,17 @@
         <if test="q.buildVersion != null and q.buildVersion != ''">AND c.build_version=#{q.buildVersion}</if>
         <if test="q.beginTime != null">AND c.crash_time &gt;= #{q.beginTime}</if>
         <if test="q.endTime != null">AND c.crash_time &lt;= #{q.endTime}</if>
-        <if test="q.keyword != null and q.keyword != ''">AND (c.content LIKE CONCAT('%',#{q.keyword},'%') OR c.signal_info LIKE CONCAT('%',#{q.keyword},'%') OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))</if>
+        <if test="q.keyword != null and q.keyword != ''">
+                <choose>
+                    <when test="q.keywordFulltext != null">
+                        AND (MATCH(c.content, c.signal_info, c.top_frames) AGAINST(#{q.keywordFulltext} IN BOOLEAN MODE)
+                             OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))
+                    </when>
+                    <otherwise>
+                        AND (c.content LIKE CONCAT('%',#{q.keyword},'%') OR c.signal_info LIKE CONCAT('%',#{q.keyword},'%') OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))
+                    </otherwise>
+                </choose>
+            </if>
     </sql>
 
     <sql id="issueFilterWhere">
@@ -237,7 +247,17 @@
                  <if test="q.buildVersion != null and q.buildVersion != ''">AND c.build_version=#{q.buildVersion}</if>
                  <if test="q.beginTime != null">AND c.crash_time &gt;= #{q.beginTime}</if>
                  <if test="q.endTime != null">AND c.crash_time &lt;= #{q.endTime}</if>
-                 <if test="q.keyword != null and q.keyword != ''">AND (c.content LIKE CONCAT('%',#{q.keyword},'%') OR c.signal_info LIKE CONCAT('%',#{q.keyword},'%') OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))</if>
+                 <if test="q.keyword != null and q.keyword != ''">
+                <choose>
+                    <when test="q.keywordFulltext != null">
+                        AND (MATCH(c.content, c.signal_info, c.top_frames) AGAINST(#{q.keywordFulltext} IN BOOLEAN MODE)
+                             OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))
+                    </when>
+                    <otherwise>
+                        AND (c.content LIKE CONCAT('%',#{q.keyword},'%') OR c.signal_info LIKE CONCAT('%',#{q.keyword},'%') OR c.fingerprint LIKE CONCAT('%',#{q.keyword},'%'))
+                    </otherwise>
+                </choose>
+            </if>
                ) AS filtered_crash_count,
                (SELECT COUNT(DISTINCT c.device_id) FROM logan_crash c
                  WHERE c.app_id=i.app_id AND c.fingerprint=i.fingerprint
@@ -285,4 +305,15 @@
         </where>
         ORDER BY brand, model LIMIT 200
     </select>
+
+    <update id="updateIssueAssign" parameterType="map">
+        UPDATE logan_crash_issue SET assignee=#{assignee}, assign_time=#{assignTime} WHERE id=#{id}
+    </update>
+
+    <update id="updateIssueClose" parameterType="map">
+        UPDATE logan_crash_issue
+        SET close_note=<if test="closeNote != null">#{closeNote}</if><if test="closeNote == null">close_note</if>,
+            close_time=<if test="closeTime != null">#{closeTime}</if><if test="closeTime == null">close_time</if>
+        WHERE id=#{id}
+    </update>
 </mapper>

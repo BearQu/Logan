@@ -10,17 +10,21 @@ import "./style.scss";
 class Sider extends Component {
 
   state = {
-    selectedKeys: ["0"]
+    selectedKeys: ["6"]
   };
 
   selectedKeysFromPathname() {
     const { pathname } = this.props;
+    if (pathname === "/overview") return ["6"];
     if (pathname === "/native-list" || pathname === "/native-log-detail") return ["0"];
     if (pathname === "/web-list" || pathname === "/web-detail") return ["1"];
     if (pathname === "/crash-list" || pathname === "/crash-detail") return ["2"];
     if (pathname === "/app-list") return ["3"];
     if (pathname === "/device-list") return ["4"];
-    return ["0"];
+    if (pathname === "/http-list") return ["5"];
+    if (pathname === "/alert") return ["7"];
+    if (pathname === "/error-list") return ["8"];
+    return ["6"];
   }
 
   render() {
@@ -28,7 +32,11 @@ class Sider extends Component {
       <Layout.Sider style={style.sider} trigger={null}>
         <div>
           <div className="sider-logo" style={style.logo} />
-          <Menu theme="dark" mode="inline" defaultSelectedKeys={["0"]} selectedKeys={this.selectedKeysFromPathname()} onClick={this.handleMenuClick}>
+          <Menu theme="dark" mode="inline" defaultSelectedKeys={["6"]} selectedKeys={this.selectedKeysFromPathname()} onClick={this.handleMenuClick}>
+            <Menu.Item key="6">
+              <Icon type="dashboard" />
+              <span>异常概览</span>
+            </Menu.Item>
             <Menu.Item key="0">
               <Icon type="mobile" />
               <span>Native日志</span>
@@ -49,6 +57,18 @@ class Sider extends Component {
               <Icon type="desktop" />
               <span>设备清单</span>
             </Menu.Item>
+            <Menu.Item key="5">
+              <Icon type="global" />
+              <span>网络监控</span>
+            </Menu.Item>
+            <Menu.Item key="7">
+              <Icon type="notification" />
+              <span>报警</span>
+            </Menu.Item>
+            <Menu.Item key="8">
+              <Icon type="warning" />
+              <span>错误分析</span>
+            </Menu.Item>
           </Menu>
         </div>
         <AppSwitcher />
@@ -58,7 +78,11 @@ class Sider extends Component {
 
   componentDidMount() {
     const {pathname} = this.props;
-    if (pathname === "/native-list" || pathname === "/native-log-detail") {
+    if (pathname === "/overview") {
+      this.setState({
+        selectedKeys: ["6"]
+      });
+    } else if (pathname === "/native-list" || pathname === "/native-log-detail") {
       this.setState({
         selectedKeys: ["0"]
       });
@@ -72,7 +96,7 @@ class Sider extends Component {
       });
     } else {
       this.setState({
-        selectedKeys: ["0"]
+        selectedKeys: ["6"]
       });
     }
   }
@@ -87,7 +111,12 @@ class Sider extends Component {
   }
 
   handleMenuClick = ({ key }) => {
-    if (key === "0") {
+    if (key === "6") {
+      window.location.hash = "#/overview";
+      this.setState({
+        selectedKeys: ["6"]
+      });
+    } else if (key === "0") {
       window.location.hash = "#/native-list";
       this.setState({
         selectedKeys: ["0"]
@@ -111,6 +140,21 @@ class Sider extends Component {
       window.location.hash = "#/device-list";
       this.setState({
         selectedKeys: ["4"]
+      });
+    } else if (key === "5") {
+      window.location.hash = "#/http-list";
+      this.setState({
+        selectedKeys: ["5"]
+      });
+    } else if (key === "7") {
+      window.location.hash = "#/alert";
+      this.setState({
+        selectedKeys: ["7"]
+      });
+    } else if (key === "8") {
+      window.location.hash = "#/error-list";
+      this.setState({
+        selectedKeys: ["8"]
       });
     } else {
       window.location.hash = "#/native-list";

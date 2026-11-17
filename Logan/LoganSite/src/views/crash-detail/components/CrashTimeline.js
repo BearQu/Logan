@@ -1,11 +1,12 @@
 import React, { PureComponent } from "react";
 import { Card, Icon, Tag, Spin, Empty, Button, Radio, message } from "antd";
 import moment from "moment";
-import { fetchCrashTimelineApi } from "../../../common/api";
+import { fetchCrashTimelineApi, fetchHttpAroundApi } from "../../../common/api";
 
 const CHANNEL_META = {
   native: { label: "Native", color: "blue" },
   h5: { label: "H5", color: "purple" },
+  http: { label: "网络", color: "cyan" },
 };
 
 /**
@@ -14,7 +15,7 @@ const CHANNEL_META = {
  */
 export default class CrashTimeline extends PureComponent {
 
-  state = { logs: null, loading: false, channel: "all" };
+  state = { logs: null, loading: false, channel: "all", withHttp: true };
 
   componentDidMount() {
     this.load();
@@ -38,20 +39,59 @@ export default class CrashTimeline extends PureComponent {
       return;
     }
     this.setState({ loading: true });
+    const before = 180;
+    const after = 15;
     try {
       const res = await fetchCrashTimelineApi({
         appId: issue.appId,
         deviceId,
         crashTime: issue.lastCrashTime,
-        before: 180,
-        after: 15,
+        before: before,
+        after: after,
         limit: 200,
       });
-      this.setState({ logs: (res && res.logs) || [], loading: false });
+      let logs = (res && res.logs) || [];
+      // 网络事件混进同一条时间轴互证：崩溃紧跟在哪个请求之后发生，往往就是根因线索
+      if (this.state.withHttp) {
+        try {
+          const rows = await fetchHttpAroundApi({
+            appId: issue.appId,
+            deviceId: deviceId,
+            beginTime: Number(issue.lastCrashTime) - before * 1000,
+            endTime: Number(issue.lastCrashTime) + after * 1000,
+            limit: 120,
+          });
+          logs = logs.concat(this.mapHttpRows(rows || [], Number(issue.lastCrashTime)));
+        } catch (e) { /* 没有网络数据时不影响业务日志展示 */ }
+      }
+      logs.sort(function (a, b) { return Number(a.deltaMs) - Number(b.deltaMs); });
+      this.setState({ logs: logs, loading: false });
     } catch (e) {
       this.setState({ logs: [], loading: false });
     }
   };
+
+  mapHttpRows(rows, crashTime) {
+    return (rows || []).map(function (r) {
+      var parts = [];
+      parts.push(String(r.method || "GET"));
+      parts.push(String(r.host || "") + String(r.path || ""));
+      if (r.status) { parts.push("→ " + r.status); }
+      if (r.errKind) { parts.push("[" + r.errKind + "]"); }
+      if (r.errMsg) { parts.push(" " + String(r.errMsg).slice(0, 120)); }
+      if (r.durationMs) { parts.push(" (" + r.durationMs + "ms)"); }
+      if (r.kind === "h5" && r.pageUrl) { parts.push(" 页面:" + String(r.pageUrl).slice(0, 80)); }
+      var delta = Number(r.occurredAt || 0) - crashTime;
+      return {
+        detailId: "h-" + r.id,
+        channel: "http",
+        content: parts.join(" "),
+        deltaMs: delta,
+        nearCrash: delta <= 0 && delta >= -10000,
+        truncated: false,
+      };
+    });
+  }
 
   render() {
     const { issue } = this.props;
@@ -71,7 +111,11 @@ export default class CrashTimeline extends PureComponent {
               <Radio.Button value="all">全部</Radio.Button>
               <Radio.Button value="native">Native</Radio.Button>
               <Radio.Button value="h5">H5</Radio.Button>
+              <Radio.Button value="http">网络</Radio.Button>
             </Radio.Group>
+            <Button size="small" type={this.state.withHttp ? "primary" : "default"} icon="global" style={{ marginLeft: 8 }}
+              onClick={() => this.setState({ withHttp: !this.state.withHttp }, this.load)}
+            >混入网络事件</Button>
             <Button size="small" icon="reload" style={{ marginLeft: 8 }} onClick={this.load} />
           </span>
         }

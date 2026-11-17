@@ -1,7 +1,19 @@
 import axios from "axios";
 import { message } from 'antd';
 
-const BASE_URL = process.defineEnv.API_BASE_URL;
+// API 基址优先取运行期注入（window.API_BASE_URL，便于同一份产物切环境），
+// 其次构建期 API_BASE_URL；都没给就走同源相对路径 /logan-web ——
+// 站点与接口由同一个 nginx 反代（location /logan-web/logan/ → backend），
+// 同源即可免 CORS、免公网 basic-auth 的二次弹框（页面本身已通过鉴权）。
+const RELATIVE_BASE = "/logan-web";
+function resolveBaseUrl() {
+  if (typeof window !== "undefined" && typeof window.API_BASE_URL === "string" && window.API_BASE_URL) {
+    return window.API_BASE_URL;
+  }
+  const build = (typeof process !== "undefined" && process.defineEnv && process.defineEnv.API_BASE_URL) || "";
+  return build || RELATIVE_BASE;
+}
+const BASE_URL = resolveBaseUrl();
 const API_TIME_OUT = 30000;
 let pendingRequests = [];
 
@@ -306,4 +318,114 @@ export function applySymbolApi(body) {
 // ---- 应用创建：appId 由平台生成（包名+端后缀，撞名自动让位），用户不手填 ----
 export function prepareAppApi(body) {
   return instance.post("/logan/app/prepare.json", body);
+}
+
+
+// ---- 网络监控（慢请求 / 失败请求 / H5 请求），数据来自客户端自动采集 ----
+export function fetchHttpListApi(params) {
+  return instance.get("/logan/http/list.json", { params });
+}
+
+
+export function fetchHttpSummaryApi(params) {
+  return instance.get("/logan/http/summary.json", { params });
+}
+
+
+export function fetchHttpAroundApi(params) {
+  return instance.get("/logan/http/around.json", { params });
+}
+
+
+export function fetchHttpIssuesApi(params) {
+  return instance.get("/logan/http/issues.json", { params });
+}
+
+
+export function fetchHttpIssueDetailApi(id) {
+  return instance.get("/logan/http/issue/detail.json", { params: { id } });
+}
+
+
+export function updateHttpIssueStatusApi(body) {
+  return instance.post("/logan/http/issue/status.json", body);
+}
+
+// ---- 异常概览看板（对标 Bugly 异常概览：崩溃率/ANR率/错误率 + 趋势 + Top 榜）----
+export function fetchOverviewSummaryApi(params) {
+  return instance.get("/logan/overview/summary.json", { params });
+}
+
+export function fetchOverviewFiltersApi(params) {
+  return instance.get("/logan/overview/filters.json", { params });
+}
+// ---- 处置闭环（对标 Bugly 处理状态/处理人/操作留痕；平台无账号体系，操作人必须显式填写）----
+export function reportIssueOpApi(body) {
+  return instance.post("/logan/issue/op.json", body);
+}
+
+export function batchIssueOpApi(body) {
+  return instance.post("/logan/issue/batch.json", body);
+}
+
+export function fetchIssueOpsApi(params) {
+  return instance.get("/logan/issue/ops.json", { params });
+}
+
+// ---- 报警规则与触发记录（通知走通用 webhook，平台 POST 标准 JSON）----
+export function fetchAlertRulesApi(params) {
+  return instance.get("/logan/alert/rules.json", { params });
+}
+
+export function saveAlertRuleApi(body) {
+  return instance.post("/logan/alert/rule/save.json", body);
+}
+
+export function enableAlertRuleApi(params) {
+  return instance.get("/logan/alert/rule/enable.json", { params });
+}
+
+export function deleteAlertRuleApi(params) {
+  return instance.get("/logan/alert/rule/delete.json", { params });
+}
+
+export function fetchAlertRecordsApi(params) {
+  return instance.get("/logan/alert/records.json", { params });
+}
+
+export function scanAlertApi(params) {
+  return instance.get("/logan/alert/scan.json", { params });
+}
+
+export function previewAlertApi(params) {
+  return instance.get("/logan/alert/preview.json", { params });
+}
+
+// ---- 错误分析（非致命异常，对标 Bugly「错误分析」：可捕获异常 / Promise 失败 / 资源加载失败）----
+export function fetchErrorListApi(params) {
+  return instance.get('/logan/error/list.json', { params });
+}
+
+export function fetchErrorSummaryApi(params) {
+  return instance.get('/logan/error/summary.json', { params });
+}
+
+export function fetchErrorTopApi(params) {
+  return instance.get('/logan/error/top.json', { params });
+}
+
+export function fetchErrorAroundApi(params) {
+  return instance.get('/logan/error/around.json', { params });
+}
+
+export function fetchErrorIssuesApi(params) {
+  return instance.get('/logan/error/issues.json', { params });
+}
+
+export function fetchErrorIssueDetailApi(id) {
+  return instance.get('/logan/error/issue/detail.json', { params: { id } });
+}
+
+export function updateErrorIssueStatusApi(body) {
+  return instance.post('/logan/error/issue/status.json', body);
 }

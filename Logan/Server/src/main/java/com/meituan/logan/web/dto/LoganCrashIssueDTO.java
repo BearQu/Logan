@@ -45,6 +45,19 @@ public class LoganCrashIssueDTO {
     /** 综合搜索时，命中筛选条件的设备数 */
     private Integer filteredDevices;
 
+    /** 处理人（对标 Bugly 处理人；平台不猜，由前端显式传入） */
+    private String assignee;
+
+    /** 最近指派时间（毫秒） */
+    private Long assignTime;
+
+    /** 处置结论说明（修复/忽略的理由） */
+    private String closeNote;
+
+    /** 处置时间（毫秒） */
+    private Long closeTime;
+
+
     /** 0 未处理 1 处理中 2 已修复 3 忽略 */
     private int status;
 

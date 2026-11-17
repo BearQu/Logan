@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+ "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganAlertMapper">
+
+    <!-- 报警规则与触发记录：规则由平台侧定时检测，通知走通用 webhook（留空则只落库不外发） -->
+
+    <sql id="ruleCols">
+        id, app_id AS appId, name, metric, op_type AS opType, threshold,
+        window_minutes AS windowMinutes, platform, app_version AS appVersion, webhook,
+        enabled, cooldown_minutes AS cooldownMinutes, last_trigger_time AS lastTriggerTime,
+        trigger_count AS triggerCount, created_by AS createdBy, add_time AS addTime, update_time AS updateTime
+    </sql>
+
+    <select id="listEnabledRules" resultType="java.util.HashMap">
+        SELECT <include refid="ruleCols"/> FROM logan_alert_rule WHERE enabled = 1 ORDER BY id
+    </select>
+
+    <select id="selectRule" parameterType="java.lang.Long" resultType="java.util.HashMap">
+        SELECT <include refid="ruleCols"/> FROM logan_alert_rule WHERE id=#{id}
+    </select>
+
+    <insert id="insertRule" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO logan_alert_rule
+        (app_id, name, metric, op_type, threshold, window_minutes, platform, app_version, webhook, enabled, cooldown_minutes, created_by, add_time, update_time)
+        VALUES (#{appId}, #{name}, #{metric}, #{opType}, #{threshold}, #{windowMinutes}, #{platform}, #{appVersion}, #{webhook}, #{enabled}, #{cooldownMinutes}, #{createdBy}, #{addTime}, #{addTime})
+    </insert>
+
+    <update id="updateRule" parameterType="java.util.HashMap">
+        UPDATE logan_alert_rule
+        <set>
+            <if test="name != null">name=#{name},</if>
+            <if test="metric != null">metric=#{metric},</if>
+            <if test="opType != null">op_type=#{opType},</if>
+            <if test="threshold != null">threshold=#{threshold},</if>
+            <if test="windowMinutes != null">window_minutes=#{windowMinutes},</if>
+            <if test="platform != null">platform=#{platform},</if>
+            <if test="appVersion != null">app_version=#{appVersion},</if>
+            <if test="webhook != null">webhook=#{webhook},</if>
+            <if test="enabled != null">enabled=#{enabled},</if>
+            <if test="cooldownMinutes != null">cooldown_minutes=#{cooldownMinutes},</if>
+            update_time=#{updateTime}
+        </set>
+        WHERE id=#{id}
+    </update>
+
+    <delete id="deleteRule" parameterType="java.lang.Long">
+        DELETE FROM logan_alert_rule WHERE id=#{id}
+    </delete>
+
+    <update id="markTriggered" parameterType="map">
+        UPDATE logan_alert_rule SET last_trigger_time=#{triggerTime}, trigger_count=trigger_count+1 WHERE id=#{id}
+    </update>
+
+    <insert id="insertRecord" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO logan_alert_record
+        (rule_id, app_id, metric, value, threshold, window_begin, window_end, webhook_result, payload, add_time)
+        VALUES (#{ruleId}, #{appId}, #{metric}, #{value}, #{threshold}, #{windowBegin}, #{windowEnd}, #{webhookResult}, #{payload}, #{addTime})
+    </insert>
+
+    <select id="listRecords" parameterType="map" resultType="java.util.HashMap">
+        SELECT r.id, r.rule_id AS ruleId, r.app_id AS appId, r.metric, r.value, r.threshold,
+               r.window_begin AS windowBegin, r.window_end AS windowEnd, r.webhook_result AS webhookResult,
+               r.payload, r.add_time AS addTime, a.name AS ruleName, a.op_type AS opType
+        FROM logan_alert_record r LEFT JOIN logan_alert_rule a ON a.id = r.rule_id
+        <where>
+            <if test="appId != null and appId != ''">AND r.app_id=#{appId}</if>
+            <if test="ruleId != null">AND r.rule_id=#{ruleId}</if>
+        </where>
+        ORDER BY r.add_time DESC LIMIT #{limit}
+    </select>
+
+    <select id="countRecordsToday" parameterType="map" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM logan_alert_record WHERE add_time &gt;= #{beginTime}
+        <if test="appId != null and appId != ''">AND app_id=#{appId}</if>
+    </select>
+
+    <select id="listRules" parameterType="map" resultType="java.util.HashMap">
+        SELECT <include refid="ruleCols"/> FROM logan_alert_rule
+        <where>
+            <if test="appId != null and appId != ''">AND app_id=#{appId}</if>
+            <if test="enabled != null">AND enabled=#{enabled}</if>
+        </where>
+        ORDER BY enabled DESC, id DESC LIMIT #{limit}
+    </select>
+
+    <select id="countEnabledRules" parameterType="map" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM logan_alert_rule WHERE enabled = 1
+        <if test="appId != null and appId != ''">AND app_id=#{appId}</if>
+    </select>
+
+    <!-- 新增问题数：first_crash_time / first_seen 落在窗口内（宁缺毋假：不看 last） -->
+    <select id="countNewCrashIssues" parameterType="map" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM logan_crash_issue i
+        WHERE i.first_crash_time BETWEEN #{q.beginTime} AND #{q.endTime}
+        <if test="q.appId != null and q.appId != ''">AND i.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND i.platform=#{q.platform}</if>
+        <if test="q.appVersion != null and q.appVersion != ''">AND EXISTS (SELECT 1 FROM logan_crash c WHERE c.fingerprint = i.fingerprint AND c.app_version = #{q.appVersion})</if>
+    </select>
+
+    <select id="countNewHttpIssues" parameterType="map" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM logan_http_issue i
+        WHERE i.first_seen BETWEEN #{q.beginTime} AND #{q.endTime}
+        <if test="q.appId != null and q.appId != ''">AND i.app_id=#{q.appId}</if>
+        <if test="q.platform != null">AND i.platform=#{q.platform}</if>
+    </select>
+
+    <!-- 报警记录保留策略：按时间删旧 + 按条数兜底，都分批删除 -->
+    <delete id="deleteRecordsOlderThan" parameterType="map">
+        DELETE FROM logan_alert_record WHERE add_time &lt; #{cutoff} LIMIT #{limit}
+    </delete>
+
+    <delete id="deleteRecordsBeyond" parameterType="map">
+        DELETE r FROM logan_alert_record r
+        JOIN (SELECT id FROM logan_alert_record ORDER BY id DESC LIMIT 1 OFFSET #{keep}) t ON r.id &lt;= t.id
+    </delete>
+</mapper>

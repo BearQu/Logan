@@ -569,7 +569,7 @@ module.exports = function(webpackEnv) {
       new webpack.DefinePlugin({
         ...env.stringified,
         "process.defineEnv": {
-          API_BASE_URL: JSON.stringify(process.env.API_BASE_URL)
+          API_BASE_URL: JSON.stringify(process.env.API_BASE_URL || "")
         }
       }),
       // This is necessary to emit hot updates (currently CSS only):

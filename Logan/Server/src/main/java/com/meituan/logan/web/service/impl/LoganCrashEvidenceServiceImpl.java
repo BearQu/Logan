@@ -8,7 +8,11 @@ import com.meituan.logan.web.dto.LoganCrashFixDTO;
 import com.meituan.logan.web.dto.LoganCrashIssueDTO;
 import com.meituan.logan.web.mapper.LoganCrashFixMapper;
 import com.meituan.logan.web.mapper.LoganCrashMapper;
+import com.meituan.logan.web.dto.LoganErrorDTO;
+import com.meituan.logan.web.dto.LoganHttpDTO;
 import com.meituan.logan.web.mapper.LoganCrashTimelineMapper;
+import com.meituan.logan.web.mapper.LoganErrorMapper;
+import com.meituan.logan.web.mapper.LoganHttpMapper;
 import com.meituan.logan.web.service.LoganCrashEvidenceService;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -32,6 +36,8 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
     private static final int MAX_LOG_ROWS = 400;
     private static final int MAX_LOG_CHARS = 1600;
     private static final int STATUS_FIXED = 2;
+    private static final int MAX_HTTP_ROWS = 120;
+    private static final int MAX_ERROR_ROWS = 60;
 
     @Resource
     private LoganCrashMapper crashMapper;
@@ -39,6 +45,10 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
     private LoganCrashFixMapper fixMapper;
     @Resource
     private LoganCrashTimelineMapper timelineMapper;
+    @Resource
+    private LoganHttpMapper httpMapper;
+    @Resource
+    private LoganErrorMapper errorMapper;
 
     @Override
     public JSONObject evidenceForCrash(long crashId, int beforeSeconds, int afterSeconds) {
@@ -55,6 +65,10 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
         }
         bundle.put("businessLogs", timeline(crash.getAppId(), crash.getDeviceId(), crash.getCrashTime(),
                 win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_LOG_ROWS));
+        bundle.put("httpEvents", httpRows(crash.getAppId(), crash.getDeviceId(),
+                crash.getCrashTime(), win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_HTTP_ROWS));
+        bundle.put("errorEvents", errorRows(crash.getAppId(), crash.getDeviceId(),
+                crash.getCrashTime(), win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_ERROR_ROWS));
         bundle.put("fixReports", fixArray(crash.getAppId(), crash.getFingerprint(), 20));
         bundle.put("meta", metaNode(beforeSeconds, afterSeconds));
         bundle.put("evidenceHash", sha1(bundle.toJSONString()));
@@ -89,6 +103,15 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
         } else {
             bundle.put("businessLogs", new JSONArray());
         }
+        if (latest != null) {
+            bundle.put("httpEvents", httpRows(latest.getAppId(), latest.getDeviceId(),
+                    latest.getCrashTime(), win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_HTTP_ROWS));
+        } else {
+            bundle.put("httpEvents", new ArrayList<Map<String, Object>>());
+        }
+        bundle.put("errorEvents", latest == null ? new ArrayList<Map<String, Object>>()
+                : errorRows(latest.getAppId(), latest.getDeviceId(), latest.getCrashTime(),
+                        win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_ERROR_ROWS));
         bundle.put("fixReports", fixArray(issue.getAppId(), issue.getFingerprint(), 20));
         bundle.put("meta", metaNode(beforeSeconds, afterSeconds));
         bundle.put("evidenceHash", sha1(bundle.toJSONString()));
@@ -135,6 +158,10 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
         List<Map<String, Object>> merged = new ArrayList<Map<String, Object>>();
         merged.addAll(safeList(timelineMapper.queryNativeLogsAround(appId, deviceId, begin, end, cap)));
         merged.addAll(safeList(timelineMapper.queryWebLogsAround(appId, deviceId, begin, end, cap)));
+        // 网络事件也进同一条时间轴：崩溃前最后一次请求往往就是触发路径
+        merged.addAll(safeList(httpRowsRaw(appId, deviceId, begin, end, cap)));
+        // 非致命错误也进时间轴：崩溃前反复出现的可捕获异常常常是同一根因的前兆
+        merged.addAll(safeList(errorRowsRaw(appId, deviceId, begin, end, cap)));
         for (Map<String, Object> row : merged) {
             Object c = row.get("content");
             if (c != null && String.valueOf(c).length() > MAX_LOG_CHARS) {
@@ -155,6 +182,156 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
         return merged;
     }
 
+    /**
+     * 崩溃前后的网络事件（原生 + H5）。既作为证据包的 httpEvents 结构化字段，
+     * 也以一行摘要的形式混入业务日志时间轴 —— 崩溃前最后一个请求通常就是触发路径。
+     */
+    private List<Map<String, Object>> httpRows(String appId, String deviceId, long crashTime,
+            int beforeSeconds, int afterSeconds, int limit) {
+        if (StringUtils.isBlank(deviceId) || crashTime <= 0) {
+            return Collections.emptyList();
+        }
+        int beforeSec = win(beforeSeconds, DEFAULT_BEFORE);
+        int afterSec = win(afterSeconds, DEFAULT_AFTER);
+        long begin = crashTime - beforeSec * 1000L;
+        long end = crashTime + afterSec * 1000L;
+        return httpRowsRaw(appId, deviceId, begin, end, Math.max(1, Math.min(500, limit)));
+    }
+
+    private List<Map<String, Object>> httpRowsRaw(String appId, String deviceId, long begin, long end, int cap) {
+        if (StringUtils.isBlank(deviceId)) {
+            return Collections.emptyList();
+        }
+        List<LoganHttpDTO> rows;
+        try {
+            rows = httpMapper.listAround(appId, deviceId, begin, end, cap);
+        } catch (Exception e) {
+            LOGGER.warn("query http events around crash failed: " + e.getMessage());
+            return Collections.emptyList();
+        }
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (LoganHttpDTO d : rows) {
+            Map<String, Object> row = new HashMap<String, Object>();
+            row.put("detailId", d.getId());
+            row.put("channel", "http");
+            row.put("logType", 91);
+            row.put("logTime", d.getOccurredAt());
+            row.put("content", httpSummary(d));
+            row.put("appVersion", d.getAppVersion());
+            row.put("buildVersion", d.getBuildVersion());
+            row.put("kind", d.getKind());
+            row.put("method", d.getMethod());
+            row.put("host", d.getHost());
+            row.put("path", d.getPath());
+            row.put("status", d.getStatus());
+            row.put("errKind", d.getErrKind());
+            row.put("errMsg", cut(d.getErrMsg(), MAX_LOG_CHARS));
+            row.put("durationMs", d.getDurationMs());
+            row.put("slow", d.isSlow());
+            row.put("url", d.getUrl());
+            row.put("traceId", d.getTraceId());
+            row.put("pageUrl", d.getPageUrl());
+            row.put("networkType", d.getNetworkType());
+            row.put("nearCrash", false);
+            out.add(row);
+        }
+        return out;
+    }
+
+    /**
+     * 崩溃前后的非致命错误（可捕获异常）。既作为证据包的 errorEvents 结构化字段，
+     * 也以摘要形式混入业务日志时间轴 —— 崩溃前反复抛出的异常常常是同一根因的前兆。
+     */
+    private List<Map<String, Object>> errorRows(String appId, String deviceId, long crashTime,
+            int beforeSeconds, int afterSeconds, int limit) {
+        if (StringUtils.isBlank(deviceId) || crashTime <= 0) {
+            return Collections.emptyList();
+        }
+        int beforeSec = win(beforeSeconds, DEFAULT_BEFORE);
+        int afterSec = win(afterSeconds, DEFAULT_AFTER);
+        long begin = crashTime - beforeSec * 1000L;
+        long end = crashTime + afterSec * 1000L;
+        return errorRowsRaw(appId, deviceId, begin, end, Math.max(1, Math.min(300, limit)));
+    }
+
+    private List<Map<String, Object>> errorRowsRaw(String appId, String deviceId, long begin, long end, int cap) {
+        if (StringUtils.isBlank(deviceId)) {
+            return Collections.emptyList();
+        }
+        List<LoganErrorDTO> rows;
+        try {
+            rows = errorMapper.listAround(appId, deviceId, Long.valueOf(begin), Long.valueOf(end),
+                    Integer.valueOf(cap));
+        } catch (Exception e) {
+            // 表还没建（未接入非致命采集）属于正常状态，降级为空而不是刷错误日志
+            LOGGER.warn("query error events around crash skipped: " + e.getMessage());
+            return Collections.emptyList();
+        }
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (LoganErrorDTO d : rows) {
+            Map<String, Object> row = new HashMap<String, Object>();
+            row.put("detailId", d.getId());
+            row.put("channel", "error");
+            row.put("logType", 92);
+            row.put("logTime", d.getOccurredAt());
+            row.put("content", errorSummary(d));
+            row.put("appVersion", d.getAppVersion());
+            row.put("buildVersion", d.getBuildVersion());
+            row.put("kind", d.getKind());
+            row.put("name", d.getName());
+            row.put("message", cut(d.getMessage(), MAX_LOG_CHARS));
+            row.put("stack", cut(d.getStack(), 4000));
+            row.put("pageUrl", d.getPageUrl());
+            row.put("traceId", d.getTraceId());
+            row.put("fatal", d.getFatal());
+            row.put("networkType", d.getNetworkType());
+            row.put("fingerprint", d.getFingerprint());
+            row.put("nearCrash", false);
+            out.add(row);
+        }
+        return out;
+    }
+
+    private static String errorSummary(LoganErrorDTO d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[ERROR] ").append(nvl(d.getKind(), "caught")).append(" ")
+                .append(nvl(d.getName(), "UnknownError"));
+        if (StringUtils.isNotBlank(d.getMessage())) {
+            sb.append(": ").append(cut(d.getMessage(), 200));
+        }
+        if (StringUtils.isNotBlank(d.getPageUrl())) {
+            sb.append(" @").append(cut(d.getPageUrl(), 120));
+        }
+        if (d.getFatal() == 1) {
+            sb.append(" [fatal]");
+        }
+        return sb.toString();
+    }
+
+    private static String httpSummary(LoganHttpDTO d) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[HTTP] ").append(nvl(d.getMethod(), "?")).append(" ");
+        sb.append(nvl(d.getHost(), "?")).append(nvl(d.getPath(), ""));
+        if (d.getStatus() > 0) {
+            sb.append(" -> ").append(d.getStatus());
+        } else if (StringUtils.isNotBlank(d.getErrKind())) {
+            sb.append(" -> ").append(d.getErrKind());
+        }
+        sb.append(" (").append(d.getDurationMs()).append("ms)");
+        if (d.isSlow()) {
+            sb.append(" [slow]");
+        }
+        if (StringUtils.isNotBlank(d.getErrMsg())) {
+            sb.append(" ").append(cut(d.getErrMsg(), 200));
+        }
+        return sb.toString();
+    }
     @Override
     public List<Map<String, Object>> crashDays(String appId, long beginTime, long endTime) {
         try {

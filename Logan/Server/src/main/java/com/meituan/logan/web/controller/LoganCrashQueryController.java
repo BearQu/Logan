@@ -167,7 +167,16 @@ public class LoganCrashQueryController {
         if (StringUtils.isNotBlank(unionId)) q.put("unionId", unionId.trim());
         if (StringUtils.isNotBlank(appVersion)) q.put("appVersion", appVersion.trim());
         if (StringUtils.isNotBlank(buildVersion)) q.put("buildVersion", buildVersion.trim());
-        if (StringUtils.isNotBlank(keyword)) q.put("keyword", keyword.trim());
+        if (StringUtils.isNotBlank(keyword)) {
+            String kw = keyword.trim();
+            q.put("keyword", kw);
+            // 全文检索走 ngram 布尔模式：先剥掉布尔操作符，再用官方推荐的双引号短语形式，
+            // 保证按顺序命中而不是任意 2-gram 命中；不足 2 个字符 ngram 建不出词，交给 LIKE 分支。
+            String ft = kw.replaceAll("[-+()~*<>\"@]", " ").trim();
+            if (ft.length() >= 2) {
+                q.put("keywordFulltext", "\"" + ft + "\"");
+            }
+        }
         Long bt = parseTime(beginTime);
         if (bt != null) q.put("beginTime", bt);
         Long et = parseTime(endTime);

@@ -9,9 +9,12 @@ import {
 import {
   fetchCrashIssuesApi, fetchCrashStatsApi, fetchCrashTrendApi, updateCrashIssueStatusApi,
   fetchCrashSearchApi, fetchCrashIssueSearchApi, fetchCrashFilterValuesApi, fetchSingleCrashApi,
+  reportIssueOpApi, batchIssueOpApi,
 } from "../../common/api";
 import { KIND_META, SEVERITY_META, STATUS_META, parseJsonArrayMaybe } from "../../consts/crash";
 import TrendChart from "./components/TrendChart";
+import { DisposeModal, BatchDisposeModal, rememberedOperator } from "../../common/components/ui/dispose";
+import { exportCsv, ColumnPicker, filterHidden } from "../../common/components/ui/exportCsv";
 import { getCurrentAppId, ensureApp, subscribe as subscribeApp } from "../../common/currentApp";
 
 const { Option } = Select;
@@ -29,6 +32,43 @@ const EMPTY_FILTERS = {
   range: null,
   keyword: "",
 };
+
+// 导出 CSV 的列（与页面展示解耦：导出要的是原始值，不要 render 出来的彩色标签）
+const ISSUE_CSV_COLUMNS = [
+  { title: "问题ID", dataIndex: "id" },
+  { title: "严重性", dataIndex: "llmSeverity" },
+  { title: "类型", dataIndex: "kind" },
+  { title: "信号/异常", dataIndex: "signalInfo" },
+  { title: "AI 摘要", dataIndex: "llmSummary" },
+  { title: "指纹", dataIndex: "fingerprint" },
+  { title: "发生次数", dataIndex: "crashCount" },
+  { title: "影响设备", dataIndex: "affectedDevices", csvText: (r) => { const s = String(r.affectedDevices || "").trim(); if (!s) return ""; try { const a = JSON.parse(s); return Array.isArray(a) ? a.join(" ") : s; } catch (e) { return s; } } },
+  { title: "状态", dataIndex: "status", csvText: (r) => (STATUS_META[r.status] ? STATUS_META[r.status].label : r.status) },
+  { title: "处理人", dataIndex: "assignee" },
+  { title: "重开次数", dataIndex: "reopenCount" },
+  { title: "首次发生", dataIndex: "firstCrashTime", csvText: (r) => (r.firstCrashTime ? moment(Number(r.firstCrashTime)).format("YYYY-MM-DD HH:mm:ss") : "") },
+  { title: "最近发生", dataIndex: "lastCrashTime", csvText: (r) => (r.lastCrashTime ? moment(Number(r.lastCrashTime)).format("YYYY-MM-DD HH:mm:ss") : "") },
+  { title: "修复结论", dataIndex: "lastFixNote" },
+];
+
+const CRASH_CSV_COLUMNS = [
+  { title: "崩溃ID", dataIndex: "id" },
+  { title: "发生时间", dataIndex: "crashTime", csvText: (r) => (r.crashTime ? moment(Number(r.crashTime)).format("YYYY-MM-DD HH:mm:ss") : "") },
+  { title: "类型", dataIndex: "kind" },
+  { title: "平台", dataIndex: "platform", csvText: (r) => (Number(r.platform) === 1 ? "安卓" : Number(r.platform) === 2 ? "iOS" : Number(r.platform) === 3 ? "鸿蒙" : (r.platform == null ? "" : r.platform)) },
+  { title: "设备码", dataIndex: "deviceId" },
+  { title: "品牌", dataIndex: "brand" },
+  { title: "机型", dataIndex: "model" },
+  { title: "系统版本", dataIndex: "releaseVer" },
+  { title: "应用版本", dataIndex: "appVersion" },
+  { title: "构建号", dataIndex: "buildVersion" },
+  { title: "ABI", dataIndex: "abi" },
+  { title: "用户", dataIndex: "userId" },
+  { title: "信号/异常", dataIndex: "signalInfo" },
+  { title: "顶部堆栈", dataIndex: "topFrames", csvText: (r) => { const s = r.topFrames == null ? "" : String(r.topFrames); try { const a = JSON.parse(s); if (Array.isArray(a)) return a.join(" | "); } catch (e) {} return s; } },
+  { title: "来源", dataIndex: "deferred", csvText: (r) => (r.deferred ? "补传" : "实时") },
+  { title: "指纹", dataIndex: "fingerprint" },
+];
 
 /** 把筛选条件转成后端参数（时间转毫秒时间戳）。 */
 function toParams(filters, extra) {
@@ -75,6 +115,11 @@ export class CrashList extends Component {
     crashLoading: false,
     activeContent: null,
     activeTitle: "",
+    disposeTarget: null,
+    selectedIssueIds: [],
+    hiddenIssueCols: [],
+    hiddenCrashCols: [],
+    batchVisible: false,
   };
 
   componentDidMount() {
@@ -116,6 +161,19 @@ export class CrashList extends Component {
   }
 
   /** 按当前已生效的筛选条件导出证据包（多维筛选，交给平台拼成 zip-ready JSON，本地 DSH 分析用） */
+  /** 导出当前页列表为 CSV（纯前端，Excel 直接打开不乱码）。 */
+  exportIssuesCsv = () => {
+    const n = exportCsv(ISSUE_CSV_COLUMNS, this.state.issues, "崩溃聚合问题_" + (this.state.appId || "") + "_" + moment().format("YYYYMMDD_HHmm"));
+    if (!n) { message.warning("当前没有可导出的数据"); return; }
+    message.success("已导出 " + n + " 条聚合问题");
+  };
+
+  exportCrashesCsv = () => {
+    const n = exportCsv(CRASH_CSV_COLUMNS, this.state.crashes, "崩溃明细_" + (this.state.appId || "") + "_" + moment().format("YYYYMMDD_HHmm"));
+    if (!n) { message.warning("当前没有可导出的数据"); return; }
+    message.success("已导出 " + n + " 条崩溃上报");
+  };
+
   exportBundle = () => {
     const { appId, applied } = this.state;
     if (!appId) { message.warning("请先选择应用"); return; }
@@ -169,7 +227,7 @@ export class CrashList extends Component {
     const { appId, applied } = this.state;
     this.setState({ loading: true });
     try {
-      const data = await fetchCrashIssueSearchApi(toParams(applied, { offset: 0, limit: 100 }));
+      const data = await fetchCrashIssueSearchApi(toParams(applied, { appId: this.state.appId, offset: 0, limit: 100 }));
       this.setState({
         issues: (data && data.list) || [],
         issueTotal: (data && data.total) || 0,
@@ -186,7 +244,7 @@ export class CrashList extends Component {
     const { appId, applied } = this.state;
     this.setState({ crashLoading: true });
     try {
-      const data = await fetchCrashSearchApi(toParams(applied, { offset, limit: pageSize }));
+      const data = await fetchCrashSearchApi(toParams(applied, { appId: appId, offset: offset, limit: pageSize }));
       this.setState({
         crashes: (data && data.list) || [],
         crashTotal: (data && data.total) || 0,
@@ -227,13 +285,23 @@ export class CrashList extends Component {
     window.location.hash = "#/crash-detail?id=" + record.id + "&appId=" + encodeURIComponent(this.state.appId);
   };
 
+  // 快捷改状态：走 /logan/issue/op.json 留痕。没记住操作人时先弹处置弹窗补填，避免无痕改状态。
   changeStatus = (record, status) => {
+    const operator = rememberedOperator();
+    if (!operator) {
+      message.warning("请先在处置弹窗填写操作人（平台无账号体系，状态变更需要留痕到人）");
+      this.setState({ disposeTarget: record });
+      return;
+    }
     confirm({
       title: "将问题标记为「" + STATUS_META[status].label + "」？",
-      content: "指纹 " + record.fingerprint,
+      content: "指纹 " + record.fingerprint + "，操作人 " + operator + "",
       onOk: async () => {
-        await updateCrashIssueStatusApi(record.id, status);
-        message.success("已更新状态");
+        await reportIssueOpApi({
+          targetType: "crash_issue", targetId: record.id, appId: this.state.appId,
+          op: "status", status: status, operator: operator,
+        });
+        message.success("已更新状态并记录留痕");
         this.loadIssuesByServer();
       },
     });
@@ -474,6 +542,14 @@ export class CrashList extends Component {
       ),
     },
     {
+      title: "处理人", dataIndex: "assignee", width: 96,
+      render: (v, r) => (v
+        ? <Tooltip title={r.assignTime ? "指派于 " + moment(Number(r.assignTime)).format("YYYY-MM-DD HH:mm") : undefined}>
+            <span style={{ fontSize: 12, color: "#1d4ed8" }}>{v}</span>
+          </Tooltip>
+        : <span style={{ color: "#bfbfbf", fontSize: 12 }}>未指派</span>),
+    },
+    {
       title: "状态", dataIndex: "status", width: 90,
       render: (s, record) => (
         <Select
@@ -491,7 +567,10 @@ export class CrashList extends Component {
     {
       title: "操作", width: 80,
       render: (v, record) => (
-        <Button size="small" type="primary" ghost onClick={() => this.openDetail(record)}>详情</Button>
+        <span>
+          <Button size="small" type="primary" ghost onClick={() => this.openDetail(record)}>详情</Button>
+          <Button size="small" style={{ marginLeft: 6 }} onClick={() => this.setState({ disposeTarget: record })}>处置</Button>
+        </span>
       ),
     },
   ];
@@ -563,22 +642,46 @@ export class CrashList extends Component {
         <Card bodyStyle={{ padding: "0 16px 16px" }} style={{ borderRadius: 8 }}>
           <Tabs activeKey={tab} onChange={(k) => this.setState({ tab: k })}>
             <TabPane tab={"聚合问题 (" + issueTotal + ")"} key="issues">
+              <div style={{ padding: "8px 0 4px" }}>
+                <Button size="small" icon="check-square" disabled={!this.state.selectedIssueIds.length}
+                  onClick={() => this.setState({ batchVisible: true })}>批量处置{this.state.selectedIssueIds.length ? "（" + this.state.selectedIssueIds.length + "）" : ""}</Button>
+                <span style={{ marginLeft: 10, color: "#8c8c8c", fontSize: 12 }}>勾选后可统一改状态并逐条留痕</span>
+                <span style={{ float: "right" }}>
+                  <Button size="small" icon="file-text" onClick={this.exportIssuesCsv}>导出 CSV</Button>
+                  <ColumnPicker
+                    columns={this.issueColumns}
+                    storageKey="logan_cols_crashlist_issues"
+                    hidden={this.state.hiddenIssueCols}
+                    onChange={(h) => this.setState({ hiddenIssueCols: h })}
+                  />
+                </span>
+              </div>
               <Table
                 rowKey="id"
                 size="middle"
                 loading={loading}
                 dataSource={issues}
-                columns={this.issueColumns}
+                columns={filterHidden(this.issueColumns, this.state.hiddenIssueCols)}
+                rowSelection={{ selectedRowKeys: this.state.selectedIssueIds, onChange: (keys) => this.setState({ selectedIssueIds: keys }) }}
                 pagination={{ pageSize: 15, showTotal: (t) => "共 " + t + " 个问题" }}
               />
             </TabPane>
             <TabPane tab={"崩溃明细 (" + crashTotal + ")"} key="crashes">
+              <div style={{ padding: "8px 0 4px", textAlign: "right" }}>
+                <Button size="small" icon="file-text" onClick={this.exportCrashesCsv}>导出 CSV</Button>
+                <ColumnPicker
+                  columns={this.crashColumns}
+                  storageKey="logan_cols_crashlist_crashes"
+                  hidden={this.state.hiddenCrashCols}
+                  onChange={(h) => this.setState({ hiddenCrashCols: h })}
+                />
+              </div>
               <Table
                 rowKey="id"
                 size="middle"
                 loading={crashLoading}
                 dataSource={crashes}
-                columns={this.crashColumns}
+                columns={filterHidden(this.crashColumns, this.state.hiddenCrashCols)}
                 pagination={{
                   pageSize: 15,
                   total: crashTotal,
@@ -599,6 +702,25 @@ export class CrashList extends Component {
         >
           <pre style={styles.stack}>{this.state.activeContent || "加载中…"}</pre>
         </Modal>
+
+        <DisposeModal
+          visible={!!this.state.disposeTarget}
+          target={this.state.disposeTarget}
+          targetType="crash_issue"
+          appId={appId}
+          title={this.state.disposeTarget ? ("问题处置 · #" + this.state.disposeTarget.id) : "问题处置"}
+          onClose={() => this.setState({ disposeTarget: null })}
+          onDone={() => this.loadIssuesByServer()}
+        />
+
+        <BatchDisposeModal
+          visible={this.state.batchVisible}
+          ids={this.state.selectedIssueIds}
+          targetType="crash_issue"
+          appId={appId}
+          onClose={() => this.setState({ batchVisible: false })}
+          onDone={() => this.setState({ batchVisible: false, selectedIssueIds: [] }, () => this.loadIssuesByServer())}
+        />
       </div>
     );
   }

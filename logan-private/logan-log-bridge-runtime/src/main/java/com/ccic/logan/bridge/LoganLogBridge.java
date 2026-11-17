@@ -30,6 +30,9 @@ public final class LoganLogBridge {
     public static void markReady() { ready = true; }
     public static boolean isReady() { return ready; }
 
+    /** Keep parity with android.util.Log so that any rewritten call site always resolves. */
+    public static String getStackTraceString(Throwable tr) { return Log.getStackTraceString(tr); }
+
     public static int v(String tag, String msg) { Log.v(tag, msg); toLogan('V', tag, msg, null); return 0; }
     public static int v(String tag, String msg, Throwable tr) { Log.v(tag, msg, tr); toLogan('V', tag, msg, tr); return 0; }
     public static int v(String tag, Throwable tr) { Log.v(tag, "", tr); toLogan('V', tag, null, tr); return 0; }
