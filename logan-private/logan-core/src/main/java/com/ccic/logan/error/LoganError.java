@@ -179,6 +179,12 @@ public final class LoganError {
         get().report(kind, name, message, t, pageUrl, traceId, extra, false);
     }
 
+    /** H5 专用：JS 侧已把 error.stack 采集成字符串随包上报，这里没有 Throwable，只有裸堆栈。 */
+    public static void reportErrorFromH5(String kind, String name, String message, String stack,
+                                         String pageUrl, String traceId, String extra) {
+        get().report(kind, name, message, null, stack, pageUrl, traceId, extra, false);
+    }
+
     /**
      * 崩溃通道镜像（默认关）。崩溃通道已经覆盖未捕获异常，默认不重复计入错误分析，
      * 免得同一个问题在两个页面各算一次；确实要在错误页一起看时再打开。
@@ -288,6 +294,12 @@ public final class LoganError {
 
     public void report(String kind, String name, String message, Throwable t, String pageUrl,
                        String traceId, String extra, boolean fatal) {
+        report(kind, name, message, t, null, pageUrl, traceId, extra, fatal);
+    }
+
+    /** rawStack：调用方已持有字符串堆栈（H5 侧无 Throwable 对象）时直接采用；t 非空时优先由 t 生成堆栈。 */
+    public void report(String kind, String name, String message, Throwable t, String rawStack,
+                       String pageUrl, String traceId, String extra, boolean fatal) {
         try {
             if (!enabled) {
                 return;
@@ -303,6 +315,9 @@ public final class LoganError {
                 thName = t.getClass().getName();
                 thMsg = safeMessage(t);
                 stack = stackOf(t);
+            } else if (rawStack != null && rawStack.trim().length() > 0) {
+                // H5 / 业务已持有字符串堆栈（无 Throwable）时直接采用，供平台聚类与 AI 摘要
+                stack = rawStack;
             }
             String finalName = pick(name, thName);
             String finalMsg = pick(message, thMsg);

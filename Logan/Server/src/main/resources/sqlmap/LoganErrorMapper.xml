@@ -166,7 +166,10 @@
     <select id="queryIssuesWithoutSummary" resultType="com.meituan.logan.web.dto.LoganErrorIssueDTO">
         SELECT <include refid="issueCols"/> FROM logan_error_issue
         WHERE (llm_summary IS NULL OR llm_summary = '')
-          AND sample_stack IS NOT NULL AND sample_stack != ''
+          AND (
+                (sample_stack IS NOT NULL AND sample_stack != '')
+                OR (sample_message IS NOT NULL AND sample_message != '')
+          )
         ORDER BY last_seen DESC LIMIT #{limit}
     </select>
 

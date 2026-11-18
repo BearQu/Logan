@@ -161,8 +161,9 @@ public final class LoganH5Bridge {
                         // window.onerror / unhandledrejection / 显式错误：走错误通道，不进 http 表
                         String kind = "error".equals(jsKind) ? "caught" : jsKind;
                         String name = nonEmpty(o.optString("name"), "H5Error");
-                        LoganError.reportError(kind, name,
-                                emptyToNull(o.optString("message")), null,
+                        LoganError.reportErrorFromH5(kind, name,
+                                emptyToNull(o.optString("message")),
+                                emptyToNull(o.optString("stack")),
                                 emptyToNull(o.optString("pageUrl")),
                                 emptyToNull(o.optString("traceId")),
                                 emptyToNull(o.optString("extra")));
