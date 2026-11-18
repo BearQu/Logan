@@ -7,3 +7,6 @@ export { LoganIdentity } from "./src/main/ets/LoganIdentity";
 export { LoganCommands, pollOnce } from './src/main/ets/LoganCommands';
 export { LoganDeviceInfo } from './src/main/ets/LoganDeviceInfo';
 export type { LoganCommandHandler } from './src/main/ets/LoganCommands';
+export { LoganHttp, LoganHttpEvent, LoganHttpHandle, HttpConfig } from './src/main/ets/LoganHttp';
+export { LoganError, LoganErrorEvent } from './src/main/ets/LoganError';
+export { LoganH5Bridge, LoganH5ScriptItem } from './src/main/ets/LoganH5Bridge';

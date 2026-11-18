@@ -6,6 +6,8 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import com.ccic.logan.error.LoganError;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -145,10 +147,26 @@ public final class LoganH5Bridge {
                     return false;
                 }
                 List<LoganHttpEvent> events = new ArrayList<LoganHttpEvent>();
+                // 已消费计数：错误类事件交给 LoganError 后不进 http 列表，若只数 http 列表会把
+                // 「全是 JS 异常」的批次误判成失败，JS 侧于是降级直传平台并撞业务 CORS。
+                int consumed = 0;
                 int n = Math.min(arr.length(), MAX_EVENTS_PER_POST);
                 for (int i = 0; i < n; i++) {
                     JSONObject o = arr.optJSONObject(i);
                     if (o == null) {
+                        continue;
+                    }
+                    String jsKind = o.optString("kind");
+                    if (isErrorKind(jsKind)) {
+                        // window.onerror / unhandledrejection / 显式错误：走错误通道，不进 http 表
+                        String kind = "error".equals(jsKind) ? "caught" : jsKind;
+                        String name = nonEmpty(o.optString("name"), "H5Error");
+                        LoganError.reportError(kind, name,
+                                emptyToNull(o.optString("message")), null,
+                                emptyToNull(o.optString("pageUrl")),
+                                emptyToNull(o.optString("traceId")),
+                                emptyToNull(o.optString("extra")));
+                        consumed++;
                         continue;
                     }
                     LoganHttpEvent e = new LoganHttpEvent();
@@ -172,10 +190,12 @@ public final class LoganH5Bridge {
                     e.extra = emptyToNull(o.optString("extra"));
                     events.add(e);
                 }
-                if (events.isEmpty()) {
+                if (events.isEmpty() && consumed == 0) {
                     return false;
                 }
-                LoganHttp.get().report(events);
+                if (!events.isEmpty()) {
+                    LoganHttp.get().report(events);
+                }
                 return true;
             } catch (Throwable t) {
                 Log.d(TAG, "h5 payload rejected: " + t);
@@ -209,6 +229,15 @@ public final class LoganH5Bridge {
             if (s.length() == 0 || "null".equals(s)) return null;
             return s.length() > 1000 ? s.substring(0, 1000) : s;
         }
+    }
+
+    /** 注入脚本里非网络语义的 kind（与平台 ErrorNorm 白名单一致）。 */
+    private static boolean isErrorKind(String k) {
+        if (k == null || k.length() == 0 || "h5".equals(k) || "native".equals(k)) {
+            return false;
+        }
+        return "error".equals(k) || "caught".equals(k) || "business".equals(k)
+                || "promise".equals(k) || "ui".equals(k) || "resource".equals(k) || "other".equals(k);
     }
 
     private static String safeGetUrl(WebView view) {

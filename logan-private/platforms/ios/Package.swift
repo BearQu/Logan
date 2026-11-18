@@ -56,7 +56,8 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("Security"),
-                .linkedFramework("UIKit", .when(platforms: [.iOS]))
+                .linkedFramework("UIKit", .when(platforms: [.iOS])),
+                .linkedFramework("WebKit", .when(platforms: [.iOS]))
             ]
         ),
     ]

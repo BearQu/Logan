@@ -336,6 +336,7 @@ public final class LoganHttp {
             o.put("deviceId", deviceId);
             o.put("appVersion", appVersion);
             o.put("buildVersion", buildVersion);
+            o.put("platform", 1);
             o.put("slowThresholdMs", slowThresholdMs);
             o.put("enabled", enabled);
             return o.toString();

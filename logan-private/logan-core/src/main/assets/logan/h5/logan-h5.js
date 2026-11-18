@@ -28,6 +28,10 @@
   var MAX_BODY_CHARS = 600;
   var seen = {};
   var seenCount = 0;
+  // JS 异常单独成队：走错误通道（logan_error），不与网络事件混在一张表
+  var eq = [];
+  var errSeen = {};
+  var errSeenCount = 0;
 
   function now() { return (Date.now ? Date.now() : new Date().getTime()); }
   function rid() {
@@ -101,7 +105,7 @@
       var body = {
         appId: cfg.appId || '',
         deviceId: cfg.deviceId || '',
-        platform: 1,
+        platform: cfg.platform || 1,
         appVersion: cfg.appVersion || '',
         buildVersion: cfg.buildVersion || '',
         os: 'h5',
@@ -118,13 +122,67 @@
       }).catch(function () {});
     } catch (e) {}
   }
+  // ---------- 非致命 JS 异常：独立队列 + 独立上报通道 ----------
+  function errNameOf(err, fallback) {
+    try {
+      if (err && typeof err === 'object' && err.name) { return String(err.name); }
+      if (typeof err === 'string' && err) { return err.slice(0, 120); }
+    } catch (e) {}
+    return fallback;
+  }
+  function pushErr(ev) {
+    try {
+      if (!ev) return;
+      if (!ev.name && !ev.message && !ev.stack) { return; }   // 三要素全空不造数据
+      if (!ev.pageUrl) ev.pageUrl = page();
+      if (!ev.occurredAt) ev.occurredAt = now();
+      if (!ev.kind) ev.kind = 'caught';
+      var k = ev.kind + '|' + (ev.name || '') + '|' + (ev.message || '');
+      if (errSeen[k]) { return; }                              // 同错误风暴抑制
+      if (errSeenCount > 2000) { errSeen = {}; errSeenCount = 0; }
+      errSeen[k] = 1; errSeenCount++;
+      eq.push(ev);
+      if (eq.length >= 20) { flushErr(); }
+    } catch (e) {}
+  }
+  function flushErr() {
+    try {
+      if (!eq.length) return;
+      var batch = eq.splice(0, 100);
+      var payload = JSON.stringify({ events: batch });
+      if (bridge && typeof bridge.postJson === 'function') {
+        try {
+          if (bridge.postJson(payload) === true) { return; }
+        } catch (e) {}
+      }
+      if (!baseUrl || !window.fetch) { return; }
+      var body = {
+        appId: cfg.appId || '',
+        deviceId: cfg.deviceId || '',
+        platform: cfg.platform || 1,
+        appVersion: cfg.appVersion || '',
+        buildVersion: cfg.buildVersion || '',
+        os: 'h5',
+        events: batch
+      };
+      window.fetch(baseUrl + '/logan/error/report.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'omit',
+        keepalive: true,
+        cache: 'no-store'
+      }).catch(function () {});
+    } catch (e) {}
+  }
   setInterval(flush, FLUSH_MS);
+  setInterval(flushErr, FLUSH_MS);
   if (document && document.addEventListener) {
     document.addEventListener('visibilitychange', function () {
-      try { if (document.visibilityState === 'hidden') flush(); } catch (e) {}
+      try { if (document.visibilityState === 'hidden') { flush(); flushErr(); } } catch (e) {}
     });
   }
-  window.addEventListener('beforeunload', function () { try { flush(); } catch (e) {} });
+  window.addEventListener('beforeunload', function () { try { flush(); flushErr(); } catch (e) {} });
 
   function classifyErr(kind, msg) {
     try {
@@ -260,17 +318,13 @@
     var prevOnError = window.onerror;
     window.onerror = function (msg, src, line, col, err) {
       try {
-        push({
-          kind: 'h5',
-          source: 'error',
-          method: 'GET',
-          url: page(),
-          status: 0,
-          errKind: 'parse',
-          errMsg: shortText(msg) + (src ? ' @ ' + src + ':' + line + ':' + col : ''),
-          durationMs: 0,
+        pushErr({
+          kind: 'caught',
+          name: errNameOf(err, 'window.onerror'),
+          message: shortText(msg) + (src ? ' @ ' + src + ':' + line + ':' + col : ''),
+          stack: shortText(err && err.stack),
           traceId: rid(),
-          pageUrl: page(),
+          pageUrl: (src && /^(https?:)?\/\//i.test(String(src))) ? src : page(),
           extra: 'source=window.onerror'
         });
       } catch (e) {}
@@ -282,15 +336,11 @@
     window.addEventListener('unhandledrejection', function (ev) {
       try {
         var r = ev && ev.reason;
-        push({
-          kind: 'h5',
-          source: 'rejection',
-          method: 'GET',
-          url: page(),
-          status: 0,
-          errKind: classifyErr(null, r && (r.message || r)),
-          errMsg: shortText(r && (r.stack || r.message || r)),
-          durationMs: 0,
+        pushErr({
+          kind: 'promise',
+          name: errNameOf(r, 'unhandledrejection'),
+          message: shortText(r && (r.message || r)),
+          stack: shortText(r && r.stack),
           traceId: rid(),
           pageUrl: page(),
           extra: 'source=unhandledrejection'
@@ -346,6 +396,20 @@
   } catch (e) {}
 
   // 显式入口：特殊客户端可自己报一条（例如自研网络层）
-  window.LoganH5Report = function (ev) { try { push(Object.assign({ kind: 'h5', source: 'manual' }, ev || {})); } catch (e) {} };
-  window.LoganH5Flush = function () { try { flush(); } catch (e) {} };
+  window.LoganH5Report = function (ev) {
+    try {
+      var e = ev || {};
+      var toErr = e.kind === 'error' || e.kind === 'caught' || e.kind === 'business'
+        || e.kind === 'promise' || e.kind === 'ui' || e.kind === 'resource'
+        || (e.name && !e.url);
+      if (toErr) {
+        var o = Object.assign({}, e);
+        if (o.kind === 'error') { o.kind = 'caught'; }
+        pushErr(o);
+      } else {
+        push(Object.assign({ kind: 'h5', source: 'manual' }, e));
+      }
+    } catch (e) {}
+  };
+  window.LoganH5Flush = function () { try { flush(); flushErr(); } catch (e) {} };
 })();
