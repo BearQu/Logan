@@ -24,6 +24,48 @@ const instance = axios.create({
   withCredentials: true
 });
 
+// 公网入口 nginx 对 /logan-web 挂了 basic-auth：页面 HTML 能加载只说明地址栏那次导航通过了挑战，
+// 浏览器缓存的凭据会被「清缓存/换无痕/过期」清掉——此后 XHR 只会静默 401（XHR 不弹挑战框），
+// 所有接口失败 → 白屏/空壳观感。兜底（在下方主拦截器 onRequestRejected 里）：本地无凭据或收到
+// 401 时弹框采集一次并落 localStorage（logan_basic_auth），此后所有请求随 Authorization 头带上。
+// 本地 nginx 不带 basic 的环境零影响（无 401 永不弹）。
+const BASIC_KEY = "logan_basic_auth";
+function basicHeader() {
+  try {
+    const v = window.localStorage.getItem(BASIC_KEY);
+    return v ? { Authorization: "Basic " + window.btoa(v) } : {};
+  } catch (e) {
+    return {};
+  }
+}
+function basicCollect() {
+  const user = window.prompt("平台访问校验（HTTP Basic）\n用户名：", "loganviewer");
+  if (user === null) return null;
+  const pass = window.prompt("密码：", "");
+  if (pass === null || pass === "") return null;
+  try {
+    window.localStorage.setItem(BASIC_KEY, user + ":" + pass);
+  } catch (e) { /* 无痕模式落不了盘：只保本次会话 */ }
+  return user + ":" + pass;
+}
+let basicPromptInFlight = null;
+function basicRetry(config) {
+  // 并发 401 共用一次弹框，避免刷屏
+  if (!basicPromptInFlight) {
+    basicPromptInFlight = new Promise(resolve => {
+      const v = basicCollect();
+      window.setTimeout(() => { basicPromptInFlight = null; }, 0);
+      resolve(v ? "Basic " + window.btoa(v) : null);
+    });
+  }
+  return basicPromptInFlight.then(h => {
+    if (!h) return Promise.reject(new Error("未输入平台访问凭据"));
+    config.headers = Object.assign({}, config.headers, { Authorization: h });
+    config._basicRetried = true;
+    return instance(config);
+  });
+}
+
 
 // Native Apis
 
@@ -204,6 +246,10 @@ const AddPendingRequest = (config) => {
 };
 
 instance.interceptors.request.use((config) => {
+  const h = basicHeader();
+  if (h.Authorization && !(config.headers && config.headers.Authorization)) {
+    config.headers = Object.assign({}, config.headers, h);
+  }
   if (config.headers.cancelOthers) {
     delete config.headers.cancelOthers;
     RemovePendingRequest(config);
@@ -227,6 +273,12 @@ function onRequestFulfilled(response) {
 }
 
 function onRequestRejected(error) {
+  // 公网 basic 401 静默失败是白屏主嫌：先尝试补一次凭据重发（见上方 basicRetry）
+  const res = error && error.response;
+  const cfg = error && error.config;
+  if (res && res.status === 401 && cfg && !cfg._basicRetried) {
+    return basicRetry(cfg);
+  }
   if (!error.request) {
     return null;
   }

@@ -63,7 +63,7 @@
         SELECT <include refid="cols"/> FROM logan_behavior
         WHERE app_id = #{appId} AND device_id = #{deviceId}
           AND occurred_at BETWEEN #{beginTime} AND #{endTime}
-        ORDER BY occurred_at DESC LIMIT #{limit}
+        ORDER BY occurred_at ASC LIMIT #{limit}
     </select>
 
     <select id="summary" resultType="map">
