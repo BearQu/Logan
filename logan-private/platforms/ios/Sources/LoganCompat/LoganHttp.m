@@ -4,6 +4,7 @@
 //
 #import "LoganHttp.h"
 #import "LoganHttpProtocol.h"
+#import "LoganRemoteConfig.h"
 
 static NSString *gHBaseUrl = nil;
 static NSString *gHAppId = nil;
@@ -119,6 +120,8 @@ static NSString *LoganTrim(NSString *s) {
                                                   selector:@selector(flushNow)
                                                   userInfo:nil
                                                    repeats:YES];
+    // 搭车驱动远程配置周期拉取（带停摆守卫，见 LoganRemoteConfig startPeriodicDrive）
+    @try { [LoganRemoteConfig startPeriodicDrive]; } @catch (NSException *e) {}
 }
 
 - (void)report:(LoganHttpEvent *)event {

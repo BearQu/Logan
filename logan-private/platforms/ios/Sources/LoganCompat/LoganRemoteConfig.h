@@ -38,6 +38,10 @@ typedef void (^LoganRemoteConfigChangeHandler)(NSDictionary<NSString *, NSString
 /// 宿主自有定时器按此周期调用 refresh 即可（SDK 不自起常驻定时器，省流量）。
 + (NSTimeInterval)recommendedFetchInterval;
 
+/// 由 LoganHttp start 调用的周期驱动（utility 队列定时器+kActiveWindow 停摆守卫）；
+/// 宿主另有自己的驱动时可不依赖它。重复调用幂等。
++ (void)startPeriodicDrive;
+
 @end
 
 NS_ASSUME_NONNULL_END

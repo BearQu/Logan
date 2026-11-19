@@ -10,6 +10,7 @@
  */
 import http from '@ohos.net.http';
 import hilog from '@ohos.hilog';
+import { LoganRemoteConfig } from './LoganRemoteConfig';
 
 const TAG = 'LoganHttp';
 const QUEUE_MAX = 500;
@@ -108,6 +109,8 @@ export class LoganHttp {
     n.authHeader = trim(c.authHeader);
     n.platform = c.platform > 0 ? c.platform : 3;
     cfg = n;
+    // 搭车驱动远程配置周期拉取（带停摆守卫，见 LoganRemoteConfig startPeriodicDrive）
+    try { LoganRemoteConfig.startPeriodicDrive(); } catch (e) { /* 观测通道不影响业务 */ }
   }
 
   /** 一行开关（默认开启） */

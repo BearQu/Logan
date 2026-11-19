@@ -17,16 +17,30 @@ import ErrorList from "./views/error-list";
 import DeviceList from "./views/device-list";
 import ConfigList from "./views/config-list";
 import Sider from "./common/components/Sider/Sider";
+import {Button} from "antd";
 import "antd/dist/antd.css";
 import "./app.scss";
 
 class App extends Component {
 
+  state = {error: null};
+
   componentDidCatch(error, errorInfo) {
-    console.log(error);
+    this.setState({error: error});
   }
 
   render() {
+    // ErrorBoundary：原来 componentDidCatch 只 console.log、render 没兜底分支，
+    // 任一页面组件抛错整棵树卸载 = 白屏观感。给出可见错误态+重载入口。
+    if (this.state.error) {
+      return (
+        <div style={{padding: 48, fontFamily: "monospace"}}>
+          <h2>页面渲染出错了</h2>
+          <p style={{color: "#c00", whiteSpace: "pre-wrap"}}>{String(this.state.error && this.state.error.message || this.state.error)}</p>
+          <Button type="primary" onClick={() => window.location.reload()}>刷新重试</Button>
+        </div>
+      );
+    }
     return (
       <ConnectedRouter history={history}>
         <>

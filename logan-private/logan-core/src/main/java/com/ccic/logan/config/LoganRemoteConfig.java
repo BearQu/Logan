@@ -44,6 +44,8 @@ public final class LoganRemoteConfig {
     private volatile SharedPreferences pref;
     private volatile long lastFetchAt = 0L;
     private volatile boolean fetching = false;
+    private volatile long lastAccessAt = 0L; // 宿主最近一次读取/显式刷新：后台周期拉取只为「有人在用」服务
+    private static final long ACTIVE_WINDOW_MS = 30 * 60 * 1000L; // 超过此窗口无人使用则停止后台拉取
     private final CopyOnWriteArrayList<OnChangeListener> listeners = new CopyOnWriteArrayList<OnChangeListener>();
 
     private LoganRemoteConfig() {
@@ -70,6 +72,7 @@ public final class LoganRemoteConfig {
         if (p == null) {
             return def;
         }
+        lastAccessAt = System.currentTimeMillis();
         String v = p.getString(key, null);
         return v == null ? def : v;
     }
@@ -100,6 +103,7 @@ public final class LoganRemoteConfig {
         if (p == null) {
             return out;
         }
+        lastAccessAt = System.currentTimeMillis();
         for (Map.Entry<String, ?> en : p.getAll().entrySet()) {
             if (!KEY_VERSION.equals(en.getKey()) && en.getValue() instanceof String) {
                 out.put(en.getKey(), (String) en.getValue());
@@ -120,6 +124,11 @@ public final class LoganRemoteConfig {
 
     /** force=true 忽略节流（宿主冷启动第一条推荐传 true，保证装包后立刻拿到首轮配置）。 */
     public void refreshAsync(boolean force) {
+        if (force) {
+            lastAccessAt = System.currentTimeMillis();
+        } else if (System.currentTimeMillis() - lastAccessAt > ACTIVE_WINDOW_MS) {
+            return; // 宿主近 30 分钟没有任何读取/显式刷新：不为无人使用的场景后台联网
+        }
         if (!force && System.currentTimeMillis() - lastFetchAt < MIN_INTERVAL_MS) {
             return;
         }
@@ -235,5 +244,24 @@ public final class LoganRemoteConfig {
         } finally {
             conn.disconnect();
         }
+    }
+
+    /**
+     * 周期驱动（由 LoganHttp worker 每次队列空闲时调，见 LoganHttp 的 maybeDriveRemoteConfig）：
+     * 距上次拉取 >= FETCH_INTERVAL_MS 且宿主近期有读取才发起。SDK 不自建常驻线程——
+     * 复用观测通道的 worker，且带 ACTIVE_WINDOW_MS 停摆守卫，不空转。
+     */
+    public void maybeDriveFromWorker() {
+        if (pref == null || fetching) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastAccessAt > ACTIVE_WINDOW_MS) {
+            return; // 无人使用：后台不拉取（省电/省流量，PoC 语义对齐 Bugly 宿主驱动）
+        }
+        if (now - lastFetchAt < FETCH_INTERVAL_MS) {
+            return;
+        }
+        refreshAsync(true);
     }
 }

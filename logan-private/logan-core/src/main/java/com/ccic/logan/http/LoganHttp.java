@@ -6,6 +6,8 @@ import android.net.NetworkInfo;
 import android.os.Build;
 import android.util.Log;
 
+import com.ccic.logan.config.LoganRemoteConfig;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -123,6 +125,11 @@ public final class LoganHttp {
                     try {
                         LoganHttpEvent first = queue.poll(FLUSH_WAIT_MS, TimeUnit.MILLISECONDS);
                         if (first == null) {
+                            // 队列空闲轮：搭车驱动远程配置周期拉取（带停摆守卫，SDK 不自建常驻线程）
+                            try {
+                                LoganRemoteConfig.get().maybeDriveFromWorker();
+                            } catch (Throwable ignore) {
+                            }
                             continue;
                         }
                         batch.add(first);

@@ -12,9 +12,12 @@ static NSString *gAuthHeader = nil;
 static LoganRemoteConfigChangeHandler gOnChange = nil;
 static NSTimeInterval gLastFetchAt = 0;
 static BOOL gFetching = NO;
+static NSTimeInterval gLastAccessAt = 0;   // 宿主最近一次读取/显式刷新：后台周期拉取只为「有人在用」服务
 
 static const NSTimeInterval kFetchInterval = 15 * 60;   // 推荐周期
 static const NSTimeInterval kMinInterval = 30;          // 手动刷新节流
+static const NSTimeInterval kActiveWindow = 30 * 60;    // 超过此窗口无人使用则停止后台拉取
+static const NSTimeInterval kDriveInterval = 5 * 60;    // LoganHttp start 周期驱动检查节拍
 static NSString *const kSuite = @"logan_remote_config";
 static NSString *const kKeyVersion = @"logan_cfg_version";
 
@@ -47,6 +50,7 @@ static NSString *const kKeyVersion = @"logan_cfg_version";
 
 + (NSString *_Nullable)stringForKey:(NSString *)key {
     if (key.length == 0) return nil;
+    gLastAccessAt = [[NSProcessInfo processInfo] systemUptime];
     id v = [[self suite] objectForKey:key];
     return [v isKindOfClass:NSString.class] ? (NSString *)v : nil;
 }
@@ -64,6 +68,7 @@ static NSString *const kKeyVersion = @"logan_cfg_version";
 }
 
 + (NSDictionary<NSString *, NSString *> *)allConfigs {
+    gLastAccessAt = [[NSProcessInfo processInfo] systemUptime];
     NSMutableDictionary *out = [NSMutableDictionary dictionary];
     NSDictionary *all = [[self suite] dictionaryRepresentation];
     for (NSString *k in all) {
@@ -80,6 +85,26 @@ static NSString *const kKeyVersion = @"logan_cfg_version";
 
 + (NSTimeInterval)recommendedFetchInterval { return kFetchInterval; }
 
++ (void)startPeriodicDrive {
+    // LoganHttp start 调用：SDK 不自建常驻线程语义例外——这是 LoganHttp 生命周期自带的
+    // dispatch 定时器，每 kDriveInterval 检查一次，带 kActiveWindow 停摆守卫不空转。
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                                          dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kDriveInterval * NSEC_PER_SEC)),
+                                  (int64_t)(kDriveInterval * NSEC_PER_SEC), (int64_t)(60 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(timer, ^{
+            NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+            BOOL active = NO;
+            @synchronized (self) { active = (now - gLastAccessAt) <= kActiveWindow; }
+            if (!active) return;
+            [self refreshForcing:YES];
+        });
+        dispatch_resume(timer);
+    });
+}
+
 + (void)refresh { [self refreshForcing:NO]; }
 
 + (void)refreshForcing:(BOOL)force {
@@ -88,6 +113,11 @@ static NSString *const kKeyVersion = @"logan_cfg_version";
     @synchronized (self) {
         baseUrl = gBaseUrl; appId = gAppId; deviceId = gDeviceId; auth = gAuthHeader; cb = gOnChange;
         if (baseUrl.length == 0 || appId.length == 0 || gFetching) return;
+        if (force) {
+            gLastAccessAt = [[NSProcessInfo processInfo] systemUptime];
+        } else if ([[NSProcessInfo processInfo] systemUptime] - gLastAccessAt > kActiveWindow) {
+            return; // 宿主近 30 分钟没有任何读取/显式刷新：不为无人使用的场景后台联网
+        }
         if (!force && ([[NSProcessInfo processInfo] systemUptime] - gLastFetchAt) < kMinInterval) return;
         gFetching = YES;
     }

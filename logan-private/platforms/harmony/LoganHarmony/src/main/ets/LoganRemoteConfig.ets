@@ -28,6 +28,10 @@ let onChange: ChangeHandler | null = null;
 let appCtx: common.Context | null = null;
 let lastFetchAt = 0;
 let fetching = false;
+let lastAccessAt = 0;                      // 宿主最近一次读取/显式刷新：后台周期拉取只为「有人在用」服务
+const ACTIVE_WINDOW_MS = 30 * 60 * 1000;   // 超过此窗口无人使用则停止后台拉取
+const DRIVE_INTERVAL_MS = 5 * 60 * 1000;   // LoganHttp start 周期驱动检查节拍
+let driveTimer = -1;
 
 // 单例缓存：每次 getPreferencesSync 拿到的若是新实例，后一轮的内存态会覆盖前一轮未落盘的写入
 // （真机坑：changed=false 分支不 flush，上一轮 new_put 只在旧实例内存里，新实例 flush 反而把磁盘旧值写回）。
@@ -115,6 +119,7 @@ export class LoganRemoteConfig {
     if (p === null) {
       return def;
     }
+    lastAccessAt = Date.now();
     const v = p.getSync(key, '') as string;
     return typeof v === 'string' && v.length > 0 ? v : def;
   }
@@ -176,6 +181,22 @@ export class LoganRemoteConfig {
     return FETCH_INTERVAL_MS;
   }
 
+  /**
+   * 由 LoganHttp start 调用的周期驱动：setInterval 每 DRIVE_INTERVAL_MS 检查一次，
+   * 带 ACTIVE_WINDOW_MS 停摆守卫不空转（宿主近半小时无读取则后台不拉取）。重复调用幂等。
+   */
+  static startPeriodicDrive(): void {
+    if (driveTimer >= 0) {
+      return;
+    }
+    driveTimer = setInterval(() => {
+      if (Date.now() - lastAccessAt > ACTIVE_WINDOW_MS) {
+        return;
+      }
+      LoganRemoteConfig.refreshForcing(true);
+    }, DRIVE_INTERVAL_MS);
+  }
+
   static refresh(): void {
     LoganRemoteConfig.refreshForcing(false);
   }
@@ -186,6 +207,11 @@ export class LoganRemoteConfig {
       return;
     }
     const now = Date.now();
+    if (force) {
+      lastAccessAt = now;
+    } else if (now - lastAccessAt > ACTIVE_WINDOW_MS) {
+      return; // 宿主近 30 分钟没有任何读取/显式刷新：不为无人使用的场景后台联网
+    }
     if (!force && now - lastFetchAt < MIN_INTERVAL_MS) {
       return;
     }
