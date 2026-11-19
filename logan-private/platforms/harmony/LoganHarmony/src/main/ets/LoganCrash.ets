@@ -13,6 +13,7 @@ import hilog from '@ohos.hilog';
 
 import { LoganCore } from './LoganCore';
 import { CrashEnvelope, extractTopFrames, makeFingerprint } from './CrashEnvelope';
+import { startAnrWatchdog, markCrashHandledForAnr } from './LoganAnrWatchdog';
 
 export class CrashConfig {
   baseUrl = 'https://ceshixiaozhan.xyz:18443/logan-web';
@@ -23,6 +24,8 @@ export class CrashConfig {
   unionId = '';
   userId = '';
   authHeader = ''; // "Basic xxx"，与 PoC nginx basic-auth 对齐
+  anrWatchdog = true;      // 独立主线程卡顿看门狗（对齐 Android CrashConfig.anrWatchdog）
+  anrTimeoutMs = 5000;     // 心跳停多久判定卡顿（对齐安卓 anrTimeoutMs=5000L）
 }
 
 const TAG = 'LoganCrash';
@@ -32,7 +35,7 @@ const lastPost = new Map<string, number>();
 let cfg: CrashConfig | null = null;
 let started = false;
 
-function envelope(kind: string, signal: string, excType: string, text: string, deferred: boolean): CrashEnvelope {
+export function envelope(kind: string, signal: string, excType: string, text: string, deferred: boolean): CrashEnvelope {
   const top = extractTopFrames(text);
   const c = cfg!;
   return {
@@ -56,15 +59,17 @@ function throttled(fp: string): boolean {
 }
 
 /** A 通道：独立裸 HTTPS POST，不依赖 Logan 上传队列（对齐 Android CrashHttp） */
-function postCrash(env: CrashEnvelope): void {
+export function postCrash(env: CrashEnvelope): void {
   try {
     const req = http.createHttp();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (cfg!.authHeader) headers['Authorization'] = cfg!.authHeader;
+    // 必须 await/处理 Promise：裸调用不发起请求（前会话同款坑，deferred 重试链路同款写法），
+    // 失败 catch 静默——B 通道 sweepFaultLogs 兜底。
     req.request(cfg!.baseUrl + '/logan/crash/upload.json', {
       method: http.RequestMethod.POST, header: headers, extraData: JSON.stringify(env),
       connectTimeout: 10000, readTimeout: 15000
-    }, () => { req.destroy(); });
+    }).then(() => { req.destroy(); }).catch(() => { req.destroy(); });
   } catch { /* 失败由 B 通道兜底 */ }
 }
 
@@ -72,6 +77,7 @@ function recordCrash(env: CrashEnvelope): void {
   if (throttled(env.fingerprint)) return;
   if (LoganCore.isReady()) { LoganCore.w(99, JSON.stringify(env)); LoganCore.flush(); }
   postCrash(env);
+  try { markCrashHandledForAnr(); } catch { /* 避让逻辑失败不影响崩溃主链路 */ }
 }
 
 // 官方 d.ts: ErrorObserver = class { onUnhandledException(errMsg: string): void }
@@ -107,6 +113,9 @@ export class LoganCrash {
     // B 通道：官方 faultLogger.query 取 fullLog（FaultLogInfo 带完整日志文本，已核 d.ts）为主，
     // 沙箱目录扫描为兜底（某些版本 fullLog 截断或 query 空时仍能拿到原始文件）。
     LoganCrash.sweepAll();
+    // 独立主线程卡顿看门狗（对标 Android AnrWatchdog）：鸿蒙系统 freeze 通道（hiAppEvent WatchFreeze）
+    // 判定阈值不受我们控制且依赖系统检测节奏，PoC 用自有心跳近似判定，独立开关可关。
+    try { const cfg2 = cfg!; startAnrWatchdog(() => cfg2); } catch (e) { hilog.warn(DOMAIN, TAG, 'anr watchdog start throw: %{public}s', String(e)); }
   }
 
   /**

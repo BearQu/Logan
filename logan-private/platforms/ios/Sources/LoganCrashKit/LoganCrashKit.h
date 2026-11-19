@@ -21,7 +21,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *userId;
 @property (nonatomic, copy, nullable) NSString *authHeader;   // 例 Basic xxx（无则不带）
 @property (nonatomic, assign) NSUInteger maxTombstoneBytes;   // 默认 512KB
+/// 主线程卡顿看门狗（对标 Bugly 收费版 ANR 大盘的采集端）；独立开关，关掉即零开销。
+@property (nonatomic, assign) BOOL anrWatchdog;               // 默认 YES（对齐安卓 CrashConfig.anrWatchdog）
+@property (nonatomic, assign) NSUInteger anrTimeoutMs;        // 心跳停多久判定卡顿，默认 5000（对齐安卓）
 @end
+
+/// 距最近一次崩溃/信号处理完成已过去多少 ms（0=从未）。ANR 看门狗避让双报用。
+FOUNDATION_EXPORT NSUInteger LoganWatchdogSilenceWindowMs(void);
+/// 崩溃/异常处理完成后标记（同 LoganWatchdogSilenceWindowMs 配套；供外部通道对齐语义）。
+FOUNDATION_EXPORT void LoganMarkCrashHandled(void);
 
 @interface LoganCrashKit : NSObject
 + (void)initWithConfig:(LoganCrashConfig *)config;   // 幂等；装钩子 + 扫 pending 补传

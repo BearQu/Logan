@@ -2,6 +2,7 @@
  * LoganCrashKit.m —— iOS 崩溃层实现（对齐 Android logan-crash 契约，见 LoganCrashKit.h）。
  */
 #import "LoganCrashKit.h"
+#import "LoganAnrWatchdog.h"
 #import <string.h>
 // 必须早于任何系统头文件：Darwin 的 <ucontext.h> 仅在 _XOPEN_SOURCE 下暴露 uc_mcontext。
 #define _XOPEN_SOURCE 700
@@ -32,12 +33,30 @@ static volatile sig_atomic_t gHandledSigMask = 0;
     if (self = [super init]) {
         _baseUrl = @"https://ceshixiaozhan.xyz:18443/logan-web";
         _maxTombstoneBytes = 512 * 1024;
+        _anrWatchdog = YES;      // 对齐安卓 CrashConfig.anrWatchdog 默认开
+        _anrTimeoutMs = 5000;    // 对齐安卓 anrTimeoutMs=5000L
     }
     return self;
 }
 @end
 
-static NSString *LoganDjb2Hex(NSString *s) {
+static inline int64_t LoganNowMsStatic(void) {
+    return (int64_t)([[NSDate date] timeIntervalSince1970] * 1000);
+}
+// 最近一次崩溃/信号处理完成的时刻（ms）；ANR 看门狗据此避让双报（对齐安卓 lastSignalAnrAt 15s 静默）。
+static volatile int64_t gLastCrashHandledAtMs = 0;
+void LoganMarkCrashHandled(void) {
+    gLastCrashHandledAtMs = LoganNowMsStatic();
+}
+// 供 LoganAnrWatchdog 查询：距上次崩溃处理已过去多少 ms（0=从未）。
+NSUInteger LoganWatchdogSilenceWindowMs(void) {
+    int64_t t = gLastCrashHandledAtMs;
+    if (t == 0) return 0;
+    int64_t now = LoganNowMsStatic();
+    return (now >= t) ? (NSUInteger)(now - t) : 0;
+}
+
+NSString *LoganDjb2Hex(NSString *s) {
     unsigned long hash = 5381;
     NSUInteger len = s.length;
     for (NSUInteger i = 0; i < len; i++) {
@@ -122,7 +141,7 @@ static NSString *LoganPad33(NSString *text, size_t byteLen) {
 }
 // 把崩溃现场的 PC 解析成一行符号（与 backtrace_symbols 同形，便于本地符号化）。
 // 说明：dladdr 非严格 async-signal-safe，与 backtrace 同属 PoC 权衡（早期 Bugly/KSCrash 简易模式同样做法）。
-static NSString *LoganSymbolicatePC(uintptr_t pc) {
+NSString *LoganSymbolicatePC(uintptr_t pc) {
     Dl_info info;
     memset(&info, 0, sizeof(info));
     if (pc == 0) return nil;
@@ -212,7 +231,7 @@ static NSData *LoganGzip(NSData *plain) {
     return result;
 }
 
-static void LoganWritePending(NSString *envelope) {
+void LoganWritePending(NSString *envelope) {
     if (!gPendingDir || envelope.length == 0) return;
     NSFileManager *fm = [NSFileManager defaultManager];
     [fm createDirectoryAtPath:gPendingDir withIntermediateDirectories:YES attributes:nil error:nil];
@@ -238,7 +257,7 @@ static NSMutableURLRequest *LoganCrashRequest(NSString *urlStr, NSString *authHe
     return req;
 }
 
-static BOOL LoganPostSync(NSString *envelope) {
+BOOL LoganPostSync(NSString *envelope) {
     if (!gCfg) return NO;
     NSData *gz = LoganGzip([envelope dataUsingEncoding:NSUTF8StringEncoding]);
     if (!gz) return NO;
@@ -266,7 +285,7 @@ static BOOL LoganPostSync(NSString *envelope) {
 
 // 指纹归一化：剥掉地址与数字偏移（ASLR 每次不同，否则同一崩溃产生不同指纹），
 // 只留镜像名 + 符号名，与 Android 端 CrashEnvelope 的「不含时间戳与地址」约定对齐。
-static NSString *LoganFpNormalize(NSString *frame) {
+NSString *LoganFpNormalize(NSString *frame) {
     NSMutableString *out = [NSMutableString string];
     NSUInteger n = frame.length;
     for (NSUInteger i = 0; i < n; i++) {
@@ -291,7 +310,7 @@ static NSString *LoganFpNormalize(NSString *frame) {
     for (NSString *p in parts) { if (p.length) [keep addObject:p]; }
     return [keep componentsJoinedByString:@" "];
 }
-static NSString *LoganEnvelope(NSString *kind, NSString *signal, NSArray<NSString *> *topFrames, NSString *content, long long crashTime, BOOL deferred) {
+NSString *LoganEnvelope(NSString *kind, NSString *signal, NSArray<NSString *> *topFrames, NSString *content, long long crashTime, BOOL deferred) {
     NSMutableDictionary *o = [NSMutableDictionary dictionary];
     o[@"kind"] = kind;
     o[@"crashTime"] = @(crashTime);
@@ -375,6 +394,7 @@ static void LoganSignalHandler(int sig, siginfo_t *info, void *ucontext) {
             LoganWritePending(env);
             LoganPostSync(env);
         }
+        LoganMarkCrashHandled();
     }
 chain:
     {
@@ -410,6 +430,7 @@ static void LoganUncaughtExceptionHandler(NSException *exception) {
         LoganWritePending(env);
         LoganPostSync(env);
     }
+    LoganMarkCrashHandled();
     if (gOldExceptionHandler) gOldExceptionHandler(exception);
 }
 
@@ -433,6 +454,9 @@ static void LoganUncaughtExceptionHandler(NSException *exception) {
             sigaction(sigs[i], &act, &gOldActions[sigs[i]]);
         }
         [self scanPending];
+        // 独立主线程看门狗（对标安卓 AnrWatchdog）：iOS 无 SIGQUIT 钩子，第三方 SDK 也不会在
+        // 主线程卡死时回调我们；心跳停超阈值自抓主线程堆栈直传，ANR 通道不被第三方吞掉。
+        [LoganAnrWatchdog startWithConfig:config];
     });
 }
 
