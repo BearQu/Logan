@@ -35,6 +35,8 @@ const CRASH_QUIET_MS = 15000;        // 崩溃通道避让窗口 15s（对齐安
 export interface AnrConfig {
   anrWatchdog: boolean;
   anrTimeoutMs: number;
+  lagWatchdog: boolean;      // 卡顿通道（[lagTimeoutMs, anrTimeoutMs) 区间归 lag，对齐安卓/iOS LagWatchdog）
+  lagTimeoutMs: number;
 }
 
 type GetCfg = () => AnrConfig;
@@ -49,6 +51,7 @@ let lastPollAtMs = 0;      // 上一次轮询执行时刻（恢复后第一轮�
 let blockedOnce = false;   // 同一次卡顿只报一次；恢复后由「连续两轮心跳准点（非冻结）」才重置（实测教训：恢复后第一轮心跳抢先清标记会抹掉刚抓到的现场）
 let lastFp = '';
 let lastReportAtMs = 0;
+let lastAnrReportedAtMs = 0; // ANR 通道最近上报时刻（lag 通道避让用，对齐安卓 lastAnrReportAt / iOS gLastAnrReportedAtMs）
 let lastCrashHandledAtMs = 0;
 let hiWatcher: hiAppEvent.AppEventPackageHolder | null = null;
 let lastSysDumpLen = 0;       // 去重：同一份系统 dump 只报一次（按内容长度判同）
@@ -156,6 +159,11 @@ function scheduleBeat(): void {
       if (c && c.anrWatchdog && !blockedOnce && gap >= c.anrTimeoutMs) {
         hilog.info(DOMAIN, TAG, 'blocked detected in beat gap=%{public}d', gap);
         reportBlockedMs(gap, c);
+      } else if (c && c.lagWatchdog && !blockedOnce && gap >= c.lagTimeoutMs && gap < c.anrTimeoutMs) {
+        // 卡顿区间 [lagTimeoutMs, anrTimeoutMs) 归 lag 通道（对齐安卓/iOS LagWatchdog）：
+        // < anrTimeoutMs 不会触发系统 THREAD_BLOCK_6S 杀进程，beat 通道自己判自己报。
+        hilog.info(DOMAIN, TAG, 'lag detected in beat gap=%{public}d', gap);
+        reportLagMs(gap, c);
       }
       beatDueAtMs = 0;
     }
@@ -187,16 +195,20 @@ function checkOnce(): void {
       //   **卡顿进行中用系统工作线程做采样上报**（见 scheduleSystemSample 挂 THREAD_BLOCK_3S 事件），
       //   自有心跳通道负责 6s 级真实卡顿（系统 THREAD_BLOCK_6S 杀进程前已抢先上报）与事后补报。
       const gap = now - lastPollAtMs;
-      if (tickFrozen() && !blockedOnce && gap >= cfg.anrTimeoutMs && now - lastTickAtMs >= cfg.anrTimeoutMs) {
+      if (tickFrozen() && !blockedOnce && gap >= cfg.lagTimeoutMs && now - lastTickAtMs >= cfg.lagTimeoutMs) {
         const blockedMs = now - lastTickAtMs;
-        hilog.info(DOMAIN, TAG, 'blocked detected blockedMs=%{public}d gap=%{public}d', blockedMs, gap);
         if (blockedMs >= cfg.anrTimeoutMs) {
+          hilog.info(DOMAIN, TAG, 'blocked detected blockedMs=%{public}d gap=%{public}d', blockedMs, gap);
           if (lastReportAtMs > 0 && now - lastReportAtMs < 30000) {
             // 系统采样通道已在卡顿进行中报过，事后补报只补「还没报出去」的
             hilog.info(DOMAIN, TAG, 'skip post-block: system sample channel reported %dms ago', now - lastReportAtMs);
           } else {
             reportBlockedMs(blockedMs, cfg);
           }
+        } else {
+          // 卡顿区间 [lagTimeoutMs, anrTimeoutMs)：beat 通道没抢到的（自旋短于 2 拍宽限的边界抖动）由这里兜底补报 lag
+          hilog.info(DOMAIN, TAG, 'lag detected (post-block) blockedMs=%{public}d gap=%{public}d', blockedMs, gap);
+          reportLagMs(blockedMs, cfg);
         }
       }
       lastPollAtMs = now;
@@ -229,6 +241,7 @@ function reportBlockedMs(blockedMs: number, cfg: AnrConfig): void {
   }
   blockedOnce = true;
   lastReportAtMs = now;
+  lastAnrReportedAtMs = now;
   // 事中证据：系统冻结检测线程（HiAppEvent 订阅通道）在卡顿 3s/6s 已把现场 dump 落盘，
   // 读回来富化进 tombstone（对齐安卓子线程抓栈的事中语义）；主线程此刻已恢复，
   // 另附当前 JS 栈近似（对齐早期 Bugly 简化模式）。
@@ -271,6 +284,59 @@ function reportBlockedMs(blockedMs: number, cfg: AnrConfig): void {
   }
   postCrash(env);
   hilog.info(DOMAIN, TAG, 'anr reported blockedMs=%{public}d fp=%{public}s', blockedMs, env.fingerprint || '');
+}
+
+/** 卡顿通道上报（kind='lag'）：判定区间 [lagTimeoutMs, anrTimeoutMs)；比 ANR 保守——
+ *  ANR 刚报过 15s 内让位（对齐安卓 lastAnrReportAt 避让 / iOS LoganAnrLastReportedAtMs）、
+ *  任意上报冷却 120s、同指纹 10min。 */
+function reportLagMs(blockedMs: number, cfg: AnrConfig): void {
+  const now = Date.now();
+  if (!cfg.lagWatchdog) return;
+  if (blockedMs < cfg.lagTimeoutMs || blockedMs >= cfg.anrTimeoutMs) return; // 双保险让位 ANR
+  if (lastCrashHandledAtMs > 0 && now - lastCrashHandledAtMs < CRASH_QUIET_MS) {
+    hilog.info(DOMAIN, TAG, 'lag skip: crash channel active (%{public}dms ago)', now - lastCrashHandledAtMs);
+    return;
+  }
+  if (lastAnrReportedAtMs > 0 && now - lastAnrReportedAtMs < CRASH_QUIET_MS) {
+    hilog.info(DOMAIN, TAG, 'lag skip: anr channel active (%{public}dms ago)', now - lastAnrReportedAtMs);
+    return;
+  }
+  if (now - lastReportAtMs < 120000) return; // 任意上报冷却 120s（比 ANR 保守）
+  blockedOnce = true;
+  lastReportAtMs = now;
+  const stack = new Error('logan-lag-sample').stack ?? '';
+  const frames: string[] = [];
+  for (const line of stack.split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('at ')) frames.push(t);
+    if (frames.length >= 16) break;
+  }
+  const content = 'Tombstone maker: logan-lag-watchdog\n'
+    + 'Crash type: lag\n'
+    + 'Lag duration: ' + String(blockedMs) + 'ms\n'
+    + 'main thread state: running (post-block sample, ArkTS single-loop constraint)\n'
+    + '"main" prio=5 tid=1 blocked\n'
+    + frames.map((f) => '  + ' + f).join('\n');
+  let env: CrashEnvelope | null = null;
+  try { env = envelope('lag', 'main-thread-blocked', 'main_thread_blocked', content, false); } catch (e) {
+    hilog.warn(DOMAIN, TAG, 'lag envelope throw (crash cfg not ready?): %{public}s', String(e));
+    return;
+  }
+  if (!env) {
+    hilog.warn(DOMAIN, TAG, 'lag envelope null (crash cfg missing?), skip');
+    return;
+  }
+  if (env.fingerprint === lastFp && now - lastReportAtMs < 600000) {
+    hilog.info(DOMAIN, TAG, 'lag skip: same fingerprint within suppress window');
+    return;
+  }
+  lastFp = env.fingerprint || '';
+  if (LoganCore.isReady()) {
+    LoganCore.w(99, JSON.stringify(env));
+    LoganCore.flush();
+  }
+  postCrash(env);
+  hilog.info(DOMAIN, TAG, 'lag reported blockedMs=%{public}d fp=%{public}s', blockedMs, env.fingerprint || '');
 }
 
 // 读系统冻结检测线程落的现场 dump（卡顿进行中由系统线程写入，主线程恢复后才读得到）。

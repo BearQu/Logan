@@ -34,6 +34,10 @@ NS_ASSUME_NONNULL_BEGIN
                        pageUrl:(nullable NSString *)pageUrl
                          extra:(nullable NSString *)extra;
 
+/// 启动耗时（对标 Bugly 启动分析）：宿主在首帧处调用，intervalMs=didFinishLaunching→首帧。
+/// 走 behavior 通道落 kind='launch' name 固定（cold_start/hot_start），intervalMs<=0 或 >60s 丢弃。
++ (void)reportLaunch:(nullable NSString *)name intervalMs:(long long)intervalMs;
+
 /// H5 注入脚本经原生桥转来的轨迹事件（字段已由 JS 侧裁剪过，这里只做白名单与兜底）。
 + (void)reportBehaviorFromH5WithKind:(nullable NSString *)kind
                                 name:(nullable NSString *)name

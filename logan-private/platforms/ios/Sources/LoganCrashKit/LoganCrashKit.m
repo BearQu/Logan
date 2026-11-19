@@ -3,6 +3,7 @@
  */
 #import "LoganCrashKit.h"
 #import "LoganAnrWatchdog.h"
+#import "LoganLagWatchdog.h"
 #import <string.h>
 // 必须早于任何系统头文件：Darwin 的 <ucontext.h> 仅在 _XOPEN_SOURCE 下暴露 uc_mcontext。
 #define _XOPEN_SOURCE 700
@@ -35,6 +36,8 @@ static volatile sig_atomic_t gHandledSigMask = 0;
         _maxTombstoneBytes = 512 * 1024;
         _anrWatchdog = YES;      // 对齐安卓 CrashConfig.anrWatchdog 默认开
         _anrTimeoutMs = 5000;    // 对齐安卓 anrTimeoutMs=5000L
+        _lagWatchdog = YES;      // 对齐安卓 CrashConfig.lagWatchdog 默认开
+        _lagTimeoutMs = 500;     // 对齐安卓 lagTimeoutMs=400L 略放宽（iOS 掉帧容忍），须 < anrTimeoutMs
     }
     return self;
 }
@@ -457,6 +460,8 @@ static void LoganUncaughtExceptionHandler(NSException *exception) {
         // 独立主线程看门狗（对标安卓 AnrWatchdog）：iOS 无 SIGQUIT 钩子，第三方 SDK 也不会在
         // 主线程卡死时回调我们；心跳停超阈值自抓主线程堆栈直传，ANR 通道不被第三方吞掉。
         [LoganAnrWatchdog startWithConfig:config];
+        // 卡顿通道（对标 Bugly 卡顿大盘）：与 ANR 通道共用主线程心跳，阈值区间互斥不双报。
+        [LoganLagWatchdog startWithConfig:config];
     });
 }
 

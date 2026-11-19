@@ -24,6 +24,7 @@ class Sider extends Component {
     if (pathname === "/http-list") return ["5"];
     if (pathname === "/alert") return ["7"];
     if (pathname === "/error-list") return ["8"];
+    if (pathname === "/config-list") return ["9"];
     return ["6"];
   }
 
@@ -68,6 +69,10 @@ class Sider extends Component {
             <Menu.Item key="8">
               <Icon type="warning" />
               <span>错误分析</span>
+            </Menu.Item>
+            <Menu.Item key="9">
+              <Icon type="cloud" />
+              <span>远程配置</span>
             </Menu.Item>
           </Menu>
         </div>
@@ -155,6 +160,11 @@ class Sider extends Component {
       window.location.hash = "#/error-list";
       this.setState({
         selectedKeys: ["8"]
+      });
+    } else if (key === "9") {
+      window.location.hash = "#/config-list";
+      this.setState({
+        selectedKeys: ["9"]
       });
     } else {
       window.location.hash = "#/native-list";

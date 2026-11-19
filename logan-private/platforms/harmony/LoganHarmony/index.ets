@@ -11,3 +11,4 @@ export { LoganHttp, LoganHttpEvent, LoganHttpHandle, HttpConfig } from './src/ma
 export { LoganError, LoganErrorEvent } from './src/main/ets/LoganError';
 export { LoganH5Bridge, LoganH5ScriptItem } from './src/main/ets/LoganH5Bridge';
 export { LoganBehavior, LoganBehaviorEvent } from "./src/main/ets/LoganBehavior";
+export { LoganRemoteConfig } from "./src/main/ets/LoganRemoteConfig";

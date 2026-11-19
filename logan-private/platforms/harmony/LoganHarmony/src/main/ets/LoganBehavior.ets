@@ -137,6 +137,22 @@ export class LoganBehavior {
     LoganBehavior.raw(kind, name, label ?? "", pageUrl ?? "", "", extra ?? "", 0);
   }
 
+  /** 启动耗时（对标 Bugly 启动分析）：宿主在首帧回调处调用，intervalMs=EntryAbility.onCreate→首帧。
+   *  走 behavior 通道落 kind='launch' name 固定（cold_start/hot_start），<=0 或 >60s 丢弃（对齐安卓/iOS）。 */
+  static reportLaunch(name: string, intervalMs: number): void {
+    if (intervalMs <= 0 || intervalMs > 60000) { return; }
+    const n = norm(name, NAME_MAX);
+    const e = new LoganBehaviorEvent();
+    e.kind = 'launch';
+    e.name = n.length > 0 ? n : 'cold_start';
+    e.intervalMs = Math.floor(intervalMs);
+    e.occurredAt = Date.now();
+    const c = LoganHttp.config();
+    if (!c || c.appId.length === 0 || c.deviceId.length === 0) { return; }
+    queue.push(e);
+    LoganBehavior.flushNow(); // 启动事件即时送达，不等攒批
+  }
+
   /** H5 桥入口：注入脚本回传的真实轨迹 */
   static reportFromH5(kind: string, name: string, label: string, pageUrl: string, traceId: string, extra: string, occurredAt: number): void {
     LoganBehavior.raw(kind, name, label, pageUrl, traceId, extra, occurredAt);

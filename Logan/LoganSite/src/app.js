@@ -15,6 +15,7 @@ import AppList from "./views/app-list";
 import HttpList from "./views/http-list";
 import ErrorList from "./views/error-list";
 import DeviceList from "./views/device-list";
+import ConfigList from "./views/config-list";
 import Sider from "./common/components/Sider/Sider";
 import "antd/dist/antd.css";
 import "./app.scss";
@@ -46,6 +47,7 @@ class App extends Component {
         <Route exact path="/device-list" component={DeviceList}/>
                 <Route exact path="/http-list" component={HttpList}/>
                 <Route exact path="/error-list" component={ErrorList}/>
+                <Route exact path="/config-list" component={ConfigList}/>
               </Switch>
             </div>
           </Layout>

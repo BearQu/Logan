@@ -26,6 +26,8 @@ export class CrashConfig {
   authHeader = ''; // "Basic xxx"，与 PoC nginx basic-auth 对齐
   anrWatchdog = true;      // 独立主线程卡顿看门狗（对齐 Android CrashConfig.anrWatchdog）
   anrTimeoutMs = 5000;     // 心跳停多久判定卡顿（对齐安卓 anrTimeoutMs=5000L）
+  lagWatchdog = true;      // 卡顿通道：[lagTimeoutMs, anrTimeoutMs) 区间归 lag（对齐安卓/iOS LagWatchdog）
+  lagTimeoutMs = 500;      // 卡顿阈值（对齐 iOS 500ms，安卓 400ms；鸿蒙主循环饿死判定有 2 拍宽限取 500）
 }
 
 const TAG = 'LoganCrash';

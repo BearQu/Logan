@@ -7,7 +7,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 import android.view.View;
 import android.widget.CompoundButton;
 import android.widget.EditText;
@@ -38,7 +37,6 @@ import java.util.concurrent.ArrayBlockingQueue;
  */
 public final class LoganBehavior {
 
-    private static final String TAG = "LoganBehaviorDbg";   // TODO 验收后删除
     private static final int QUEUE_CAPACITY = 400;
     private static final int BATCH_SIZE = 60;
     private static final long FLUSH_WAIT_MS = 5000L;
@@ -120,9 +118,7 @@ public final class LoganBehavior {
 
     /** 启动后台上报线程（幂等）。LoganHttp 未配置时保持休眠，配置好后调一次即起。 */
     public synchronized void start() {
-        Log.d(TAG, "start() running=" + running + " configured=" + configured() + " enabled=" + enabled);
         if (running || !configured()) {
-            Log.d(TAG, "start() noop");
             return;
         }
         running = true;
@@ -192,6 +188,13 @@ public final class LoganBehavior {
         get().enqueue("page", name, label, null, null, null, 0L, System.currentTimeMillis());
     }
 
+    /** 启动耗时（对标 Bugly 启动分析）：宿主在首帧回调处调用，intervalMs=Application.onCreate→首帧。
+     *  走 behavior 通道落 kind='launch' name 固定（cold_start/hot_start），平台大盘按此聚合。 */
+    public static void reportLaunch(String name, long intervalMs) {
+        if (intervalMs <= 0 || intervalMs > 60000L) return; // 明显不合理的启动耗时丢弃（>60s 多半是挂机）
+        get().enqueue("launch", name, null, null, null, null, intervalMs, System.currentTimeMillis());
+    }
+
     /**
      * H5 侧上报的裸字段轨迹（原生桥调进来）：H5 事件已在浏览器侧成型，这里不再取宿主上下文与
      * 当前页面，原样入队由服务端 BehaviorNorm 统一脱敏归一化。参照 LoganError.reportErrorFromH5 先例。
@@ -235,12 +238,10 @@ public final class LoganBehavior {
         }
         try {
             if (app == null) {
-                Log.d(TAG, "installAutoHooks skip: app==null");
                 return;
             }
             autoHooksInstalled = true;
             app.registerActivityLifecycleCallbacks(new Lifecycle());
-            Log.d(TAG, "auto hooks installed");
         } catch (Throwable ignore) {
             // 少一个自动采集点，不影响显式入口
         }
@@ -535,7 +536,6 @@ public final class LoganBehavior {
             if (!running) {
                 start();
                 if (!running) {
-                    Log.d(TAG, "drop kind=" + kind + " reason=not-running(unconfigured?)");
                     return;
                 }
             }
@@ -581,7 +581,6 @@ public final class LoganBehavior {
                 queue.poll();
                 ok = queue.offer(o);
             }
-            Log.d(TAG, "enqueue kind=" + kind + " name=" + name + " ok=" + ok + " qsize=" + queue.size());
         } catch (Throwable ignore) {
         }
     }
@@ -645,7 +644,6 @@ public final class LoganBehavior {
                 }
             }
             int code = conn.getResponseCode();
-            Log.d(TAG, "postBatch events=" + batch.size() + " http=" + code);
             if (code < 200 || code >= 300) {
                 throw new IllegalStateException("behavior report http " + code);
             }

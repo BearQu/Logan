@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.meituan.logan.web.mapper.LoganConfigMapper">
+    <resultMap id="configMap" type="com.meituan.logan.web.dto.LoganConfigDTO">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="app_id" jdbcType="VARCHAR" property="appId"/>
+        <result column="config_key" jdbcType="VARCHAR" property="configKey"/>
+        <result column="config_value" jdbcType="VARCHAR" property="configValue"/>
+        <result column="enabled" jdbcType="INTEGER" property="enabled"/>
+        <result column="version" jdbcType="BIGINT" property="version"/>
+        <result column="remark" jdbcType="VARCHAR" property="remark"/>
+        <result column="add_time" jdbcType="BIGINT" property="addTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+    </resultMap>
+
+    <!-- 键唯一：app_id + config_key。重复保存 = 覆盖值/enabled/remark 并带新 version（墓碑复活）。 -->
+    <insert id="upsert" parameterType="com.meituan.logan.web.dto.LoganConfigDTO" useGeneratedKeys="true" keyColumn="id" keyProperty="id">
+      INSERT INTO logan_config (app_id,config_key,config_value,enabled,version,remark,add_time)
+      VALUES (#{appId},#{configKey},#{configValue},#{enabled},#{version},#{remark},#{addTime})
+      ON DUPLICATE KEY UPDATE
+        config_value = VALUES(config_value),
+        enabled = VALUES(enabled),
+        version = VALUES(version),
+        remark = VALUES(remark)
+    </insert>
+
+    <select id="listByApp" parameterType="java.lang.String" resultMap="configMap">
+      SELECT * FROM logan_config WHERE app_id=#{appId} ORDER BY enabled DESC, config_key ASC
+    </select>
+
+    <select id="listSince" parameterType="map" resultMap="configMap">
+      SELECT * FROM logan_config WHERE app_id=#{appId} AND version &gt; #{sinceVersion} ORDER BY version ASC
+    </select>
+
+    <select id="selectSeq" parameterType="java.lang.String" resultType="java.lang.Long">
+      SELECT seq FROM logan_config_seq WHERE app_id=#{appId}
+    </select>
+
+    <update id="bumpSeq" parameterType="java.lang.String">
+      UPDATE logan_config_seq SET seq = seq + 1 WHERE app_id=#{appId}
+    </update>
+
+    <insert id="insertSeq" parameterType="java.lang.String">
+      INSERT IGNORE INTO logan_config_seq (app_id, seq) VALUES (#{appId}, 0)
+    </insert>
+</mapper>

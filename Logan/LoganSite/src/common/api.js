@@ -256,6 +256,19 @@ export function fetchAppInfoApi(appId) {
   return instance.get('/logan/app/info.json', { params: { appId } });
 }
 
+// 远程配置（对标 Bugly 收费版）：控制台 CRUD，客户端拉取走 SDK 直连 /logan/config/get.json
+export function fetchConfigListApi(appId) {
+  return instance.get('/logan/config/list.json', { params: { appId } });
+}
+
+export function saveConfigApi(body) {
+  return instance.post("/logan/config/save.json", body);
+}
+
+export function deleteConfigApi(body) {
+  return instance.post("/logan/config/delete.json", body);
+}
+
 export function fetchCrashEvidenceApi(params) {
   return instance.get('/logan/crash/evidence.json', { params });
 }

@@ -24,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// 主线程卡顿看门狗（对标 Bugly 收费版 ANR 大盘的采集端）；独立开关，关掉即零开销。
 @property (nonatomic, assign) BOOL anrWatchdog;               // 默认 YES（对齐安卓 CrashConfig.anrWatchdog）
 @property (nonatomic, assign) NSUInteger anrTimeoutMs;        // 心跳停多久判定卡顿，默认 5000（对齐安卓）
+/// 主线程卡顿采集（对标 Bugly 收费版卡顿大盘）；心跳停走 ∈[lagTimeoutMs, anrTimeoutMs) 抓栈上报 kind='lag'。
+@property (nonatomic, assign) BOOL lagWatchdog;               // 默认 YES（对齐安卓 CrashConfig.lagWatchdog）
+@property (nonatomic, assign) NSUInteger lagTimeoutMs;        // 卡顿判定阈值，默认 500（须 < anrTimeoutMs；对齐安卓）
 @end
 
 /// 距最近一次崩溃/信号处理完成已过去多少 ms（0=从未）。ANR 看门狗避让双报用。

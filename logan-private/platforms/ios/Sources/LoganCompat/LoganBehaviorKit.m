@@ -214,6 +214,16 @@ static IMP gBehOrigSendAction = NULL;
     } @catch (NSException *e) {}
 }
 
++ (void)reportLaunch:(NSString *)name intervalMs:(long long)intervalMs {
+    @try {
+        if (intervalMs <= 0 || intervalMs > 60000) { return; } // 明显不合理丢弃（>60s 多半挂机，对齐安卓）
+        if (![self isEnabled]) { return; }
+        [self enqueueWithKind:@"launch" name:LoganBehClip(name.length > 0 ? name : @"cold_start", 256) label:nil
+                      pageUrl:nil traceId:nil extra:nil intervalMs:intervalMs occurredAt:LoganBehNow()];
+        [self flushNow]; // 启动事件即时送达，不等攒批
+    } @catch (NSException *e) {}
+}
+
 + (void)reportBehaviorFromH5WithKind:(NSString *)kind name:(NSString *)name label:(NSString *)label
                          pageUrl:(NSString *)pageUrl traceId:(NSString *)traceId
                            extra:(NSString *)extra occurredAt:(long long)occurredAt {
@@ -230,6 +240,13 @@ static IMP gBehOrigSendAction = NULL;
 + (void)enqueueWithKind:(NSString *)kind name:(NSString *)name label:(NSString *)label
               pageUrl:(NSString *)pageUrl traceId:(NSString *)traceId
                 extra:(NSString *)extra occurredAt:(long long)occurredAt {
+    [self enqueueWithKind:kind name:name label:label pageUrl:pageUrl traceId:traceId
+                    extra:extra intervalMs:0 occurredAt:occurredAt];
+}
+
++ (void)enqueueWithKind:(NSString *)kind name:(NSString *)name label:(NSString *)label
+              pageUrl:(NSString *)pageUrl traceId:(NSString *)traceId
+                extra:(NSString *)extra intervalMs:(long long)intervalMs occurredAt:(long long)occurredAt {
     @try {
         if (gBehQueue == nil) { gBehQueue = [NSMutableArray array]; gBehLock = [NSLock new]; }
         // 三要素全空 → 不造数据（与安卓/鸿蒙端同语义，与服务端 BehaviorNorm 双保险）
@@ -250,6 +267,7 @@ static IMP gBehOrigSendAction = NULL;
         if (pageUrl.length > 0) { ev[@"pageUrl"] = pageUrl; }
         if (traceId.length > 0) { ev[@"traceId"] = traceId; }
         if (extra.length > 0) { ev[@"extra"] = extra; }
+        if (intervalMs > 0) { ev[@"intervalMs"] = @(intervalMs); } // 启动耗时等数值型事件（对齐安卓 enqueue）
         ev[@"occurredAt"] = @(occurredAt > 0 ? occurredAt : now);
         BOOL full = gBehQueue.count >= kBehQueueMax;
         if (!full) { [gBehQueue addObject:ev]; }

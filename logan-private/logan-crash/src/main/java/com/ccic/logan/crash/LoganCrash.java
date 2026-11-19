@@ -57,6 +57,7 @@ public final class LoganCrash {
         // 独立主线程看门狗：ANR 信号(SIGQUIT)钩子可能被其它 SDK(如 Bugly)后装抢占，
         // 看门狗不依赖信号，主线程真实卡死超阈值即抓栈直传，保证 ANR 通道不被第三方 SDK 吞掉。
         if (cfg.anrWatchdog) AnrWatchdog.start(app, cfg);
+        if (cfg.lagWatchdog) LagWatchdog.start(app, cfg);
     }
 
     /** 冷启动扫描遗留 tombstone，后台线程逐条 gzip 直传 crash 端点（通道 B）。 */
@@ -102,6 +103,7 @@ public final class LoganCrash {
     /** 独立主线程看门狗（零第三方依赖：Handler+Thread.getStackTrace）。 */
     static final class AnrWatchdog extends Thread {
         private static AnrWatchdog instance;
+        private static volatile long lastAnrReportAt = 0L; // 供 LagWatchdog 避让同一卡顿窗口
         private final android.os.Handler main;
         private final CrashConfig cfg;
         private volatile long tick = 0L;
@@ -163,8 +165,92 @@ public final class LoganCrash {
             String fp = CrashEnvelope.fingerprint("anr", content);
             if (fp.equals(lastFp) && System.currentTimeMillis() - lastReportAt < 300_000L) return;
             lastFp = fp; lastReportAt = System.currentTimeMillis();
+            lastAnrReportAt = lastReportAt;
             String payload = CrashEnvelope.wrap(cfg, "anr", content, false);
             CrashHttp.postStringSync(cfg.crashUploadUrl(), payload, cfg.uploadHeaders());
+        }
+
+        /** 最近一次 ANR 看门狗上报时刻（LagWatchdog 避让用）。 */
+        static long lastReportAtMs() { return lastAnrReportAt; }
+    }
+
+    /** 卡顿看门狗（对标 Bugly 卡顿大盘）：心跳同 AnrWatchdog；判定链里 [lagTimeoutMs, anrTimeoutMs)
+     *  另开一路抓栈上报 kind='lag'。风暴抑制比 ANR 保守（任意报冷却 120s、同指纹 10min）；
+     *  同一次卡顿若最终升级到 ANR（xcrash 或 AnrWatchdog 报了 anr），lag 侧靠 lastSignalAnrAt 15s
+     *  避让 + ANR 上报时刻避让，不双报。 */
+    static final class LagWatchdog extends Thread {
+        private static LagWatchdog instance;
+        private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        private volatile long tick = 0L;
+        private long lastTick = -1L, lastTickAt = 0L;
+        private volatile long lastReportAt = 0L;   // lag 通道自己的上报闸门（volatile：与 ANR 侧同名不同字段）
+        private String lastFp = null;
+        private volatile boolean blocked = false;
+        private final CrashConfig cfg;
+
+        static synchronized void start(Context app, CrashConfig cfg) {
+            if (instance != null || cfg.lagTimeoutMs <= 0 || cfg.lagTimeoutMs >= cfg.anrTimeoutMs) return;
+            instance = new LagWatchdog(cfg);
+            instance.setDaemon(true);
+            instance.setName("logan-lag-watchdog");
+            instance.start();
+        }
+
+        LagWatchdog(CrashConfig cfg) { this.cfg = cfg; }
+
+        @Override public void run() {
+            final Runnable beat = new Runnable() {
+                @Override public void run() {
+                    tick++;
+                    main.postDelayed(this, 200L);
+                }
+            };
+            main.postDelayed(beat, 200L);
+            while (true) {
+                try { Thread.sleep(250L); } catch (InterruptedException e) { return; }
+                long t = tick, now = System.currentTimeMillis();
+                if (t != lastTick) { lastTick = t; lastTickAt = now; blocked = false; continue; } // 活着
+                if (now - lastTickAt < cfg.lagTimeoutMs) continue;      // 还没到卡顿阈值
+                if (blocked) continue;                                    // 本轮卡顿已报过
+                blocked = true;
+                if (now - lastSignalAnrAt < 15_000L) continue;           // xcrash 的 ANR 刚报，同一窗口不双报
+                if (now - AnrWatchdog.lastReportAtMs() < 15_000L) continue; // AnrWatchdog 刚报同一窗口，避让
+                if (now - lastReportAt < 120_000L) continue;             // 风暴抑制：任意两次上报至少隔 120s
+                report(now - lastTickAt);
+            }
+        }
+
+        private void report(long blockedMs) {
+            try {
+                // 只有确认主线程还没恢复才上报（抓栈期间心跳若恢复说明只是临界抖动，弃报）
+                long before = tick;
+                Thread mainThread = android.os.Looper.getMainLooper().getThread();
+                StackTraceElement[] trace = mainThread.getStackTrace();
+                if (tick != before) return;
+                Thread.State state = mainThread.getState();
+                CrashConfig cfg = this.cfg;
+                if (cfg == null) return;
+                String sep = System.lineSeparator();
+                StringBuilder sb = new StringBuilder();
+                sb.append("*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***").append(sep);
+                sb.append("Tombstone maker: 'logan-lag-watchdog'").append(sep);
+                sb.append("Crash type: 'lag'").append(sep);
+                sb.append("App ID: '").append(cfg.appId).append("'").append(sep);
+                sb.append("App version: '").append(cfg.appVersion).append("'").append(sep);
+                String ts = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US).format(new java.util.Date());
+                sb.append("Start time: '").append(ts).append("'").append(sep);
+                sb.append("Lag duration: '").append(blockedMs).append("ms'").append(sep);
+                sb.append("main thread state: '").append(state).append("'").append(sep).append(sep);
+                sb.append((char) 34).append("main").append((char) 34).append(" prio=5 tid=1 ").append(state).append(sep);
+                for (StackTraceElement f : trace) sb.append("    at ").append(f).append(sep);
+                String content = sb.toString();
+                String fp = CrashEnvelope.fingerprint("lag", content);
+                if (fp.equals(lastFp) && System.currentTimeMillis() - lastReportAt < 600_000L) return; // 同指纹风暴抑制
+                lastFp = fp; lastReportAt = System.currentTimeMillis();
+                String payload = CrashEnvelope.wrap(cfg, "lag", content, false);
+                CrashHttp.postStringSync(cfg.crashUploadUrl(), payload, cfg.uploadHeaders());
+            } catch (Throwable ignored) {
+            }
         }
     }
 

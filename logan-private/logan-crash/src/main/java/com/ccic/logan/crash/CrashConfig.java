@@ -20,6 +20,8 @@ public final class CrashConfig {
     public boolean uploadOnStartup = true;
     public boolean anrWatchdog = true;          // 独立主线程看门狗（SIGQUIT 钩子被第三方 SDK 抢占时兜底）
     public long anrTimeoutMs = 5000L;           // 主线程无响应判定阈值
+    public boolean lagWatchdog = true;          // 卡顿采集（对标 Bugly 卡顿大盘）：主线程挂起超阈值未达 ANR 即抓栈上报 kind='lag'
+    public long lagTimeoutMs = 400L;            // 卡顿判定阈值（须 < anrTimeoutMs；[lagTimeoutMs, anrTimeoutMs) 区间报 lag，之后归 ANR 通道）
     public Map<String, String> headers = new HashMap<>();
     public int maxTombstoneBytes = 512 * 1024;  // 单包 tombstone 上限（服务端列 will be mediumtext）
 

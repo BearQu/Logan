@@ -25,7 +25,7 @@ extern NSString *LoganFpNormalize(NSString *frame);
 extern NSUInteger LoganWatchdogSilenceWindowMs(void);          // 崩溃/信号通道最近一次处理时间窗（0=无）
 
 static LoganCrashConfig *gWatchCfg = nil;
-static volatile uint64_t gBeatTick = 0;        // 主线程心跳计数（主线程唯一写，看门狗读）
+volatile uint64_t gBeatTick = 0;        // 主线程心跳计数（主线程唯一写，看门狗读）
 static volatile int gWatchStarted = 0;
 static volatile int gWatchdogBusy = 0;         // 防重入：抓栈窗口内跳过轮询
 
@@ -36,7 +36,7 @@ static const int64_t kAnyReportCooldownMs = 60000; // 任意上报后 60s 静默
 static const int64_t kCrashQuietMs = 15000;     // 崩溃通道刚处理过则静默（同安卓 xcrash 避让窗）
 
 // 主线程心跳：dispatch_after 自链。主线程一旦卡在业务代码里，这个块排不进来，tick 停走。
-static void LoganBeatSchedule(void) {
+void LoganBeatSchedule(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kBeatIntervalMs * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
         gBeatTick++;
@@ -48,7 +48,7 @@ static void LoganBeatSchedule(void) {
 // 这里不挂起——读到瞬时旧帧可接受，PoC 权衡与早期 Bugly/KSCrash 简易模式一致）。
 // 主线程 mach 端口：task_threads() 第一项即主线程（POSIX 保证线程创建顺序；iOS 无
 // pthread_main_thread_np 公开声明，不依赖私有 API）。
-static NSArray<NSString *> *LoganMainThreadSymbolizedFrames(void) {
+NSArray<NSString *> *LoganMainThreadSymbolizedFrames(void) {
     thread_act_array_t threads = NULL;
     mach_msg_type_number_t nthreads = 0;
     kern_return_t tkr = task_threads(mach_task_self(), &threads, &nthreads);
@@ -141,14 +141,19 @@ static int64_t LoganNowMs(void) {
         // 若在入口置位，LoganPostSync 同步阻塞秒级期间每个 250ms 轮询都会重复触发判定，
         // 且静默窗/冷却 skip 分支留下的置位会把恢复后下一个真卡顿一起吞掉
         // （PoC 验收实证：首轮 pid 33597 因此零上报）。
-        NSLog(@"[logan][anr] blocked detected tick idle %lldms", (long long)(now - _lastTickAtMs));
-        if (now - (int64_t)LoganWatchdogSilenceWindowMs() < kCrashQuietMs) { NSLog(@"[logan][anr] skip: crash quiet window"); return; } // 崩溃通道刚处理过
-        if (_lastFp && now - _lastReportAtMs < kAnyReportCooldownMs) { NSLog(@"[logan][anr] skip: cooldown"); return; }      // 风暴抑制
+        // NSLog 不进模拟器统一日志（PoC 取证教训），诊断行只走 os_log 级别会丢；统一删掉热路径噪音，
+        // 保留 started/reported 两条关键行即可。
+        if (now - (int64_t)LoganWatchdogSilenceWindowMs() < kCrashQuietMs) { return; } // 崩溃通道刚处理过
+        if (_lastFp && now - _lastReportAtMs < kAnyReportCooldownMs) { return; }      // 风暴抑制
         [self reportBlockedMs:(now - _lastTickAtMs) cfg:cfg];
     } @finally {
         LOGAN_ATOMIC_STORE(&gWatchdogBusy, 0);
     }
 }
+
+// 供 LoganLagWatchdog 避让：最近一次 ANR 上报时刻（ms，0=从未）
+static volatile int64_t gLastAnrReportedAtMs = 0;
+int64_t LoganAnrLastReportedAtMs(void) { return gLastAnrReportedAtMs; }
 
 - (void)reportBlockedMs:(int64_t)blockedMs cfg:(LoganCrashConfig *)cfg {
     NSArray<NSString *> *frames = LoganMainThreadSymbolizedFrames();
@@ -179,6 +184,7 @@ static int64_t LoganNowMs(void) {
     if (!env) { NSLog(@"[logan][anr] envelope null, skip"); return; }
     _lastFp = fp;
     _lastReportAtMs = LoganNowMs();
+    gLastAnrReportedAtMs = _lastReportAtMs;
     // 当场直传；失败落 pending 由下次冷启动 scanPending 补传（通道 B 复用崩溃层）
     BOOL sent = LoganPostSync(env);
     NSLog(@"[logan][anr] reported blockedMs=%lld fp=%@ post=%@", (long long)blockedMs, fp, sent ? @"ok" : @"pending");
