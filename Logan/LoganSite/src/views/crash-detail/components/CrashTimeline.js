@@ -1,13 +1,16 @@
 import React, { PureComponent } from "react";
 import { Card, Icon, Tag, Spin, Empty, Button, Radio, message } from "antd";
 import moment from "moment";
-import { fetchCrashTimelineApi, fetchHttpAroundApi } from "../../../common/api";
+import { fetchCrashTimelineApi, fetchHttpAroundApi, fetchBehaviorAroundApi } from "../../../common/api";
 
 const CHANNEL_META = {
   native: { label: "Native", color: "blue" },
   h5: { label: "H5", color: "purple" },
   http: { label: "网络", color: "cyan" },
+  behavior: { label: "行为", color: "geekblue" },
 };
+
+const KIND_ICON = { launch: "🚀", page: "📄", route: "🧭", click: "👆", tap: "👆", submit: "⌨️", dialog: "💬", custom: "✦", foreground: "🔆", background: "🌙", scroll: "🌀" };
 
 /**
  * 崩溃 ↔ 日志互证：拉同设备崩溃前 before 秒、后 after 秒的业务日志（native + h5 混排），
@@ -15,7 +18,7 @@ const CHANNEL_META = {
  */
 export default class CrashTimeline extends PureComponent {
 
-  state = { logs: null, loading: false, channel: "all", withHttp: true };
+  state = { logs: null, loading: false, channel: "all", withHttp: true, withBehavior: true };
 
   componentDidMount() {
     this.load();
@@ -64,6 +67,22 @@ export default class CrashTimeline extends PureComponent {
           logs = logs.concat(this.mapHttpRows(rows || [], Number(issue.lastCrashTime)));
         } catch (e) { /* 没有网络数据时不影响业务日志展示 */ }
       }
+      // 用户行为轨迹混入（三端 SDK 本地采集，不依赖业务接入）：崩溃前用户正在做什么——
+      // 启动、进了哪些页、点了什么、有没有打开过弹窗，是把堆栈对上业务动作的关键上下文。
+      if (this.state.withBehavior) {
+        try {
+          const res2 = await fetchBehaviorAroundApi({
+            appId: issue.appId,
+            deviceId: deviceId,
+            crashTime: Number(issue.lastCrashTime),
+            beforeSeconds: before,
+            afterSeconds: after,
+            limit: 120,
+          });
+          // axios 拦截器已解 LoganResponse 封套（见 common/api.js onRequestFulfilled），这里直接拿 {rows,total}
+          logs = logs.concat(this.mapBehaviorRows((res2 && res2.rows) || [], Number(issue.lastCrashTime)));
+        } catch (e) { /* 该设备没有行为数据时不影响其他通道展示 */ }
+      }
       logs.sort(function (a, b) { return Number(a.deltaMs) - Number(b.deltaMs); });
       this.setState({ logs: logs, loading: false });
     } catch (e) {
@@ -93,6 +112,26 @@ export default class CrashTimeline extends PureComponent {
     });
   }
 
+  mapBehaviorRows(rows, crashTime) {
+    return (rows || []).map(function (r) {
+      var parts = [];
+      var kind = String(r.kind || "custom");
+      parts.push((KIND_ICON[kind] || "") + " " + kind);
+      if (r.name) { parts.push(String(r.name).slice(0, 120)); }
+      if (r.label) { parts.push("·" + String(r.label).slice(0, 80)); }
+      if (r.pageUrl) { parts.push(" " + String(r.pageUrl).slice(0, 100)); }
+      var delta = Number(r.occurredAt || 0) - crashTime;
+      return {
+        detailId: "b-" + r.id,
+        channel: "behavior",
+        content: parts.join(" "),
+        deltaMs: delta,
+        nearCrash: delta <= 0 && delta >= -10000,
+        truncated: false,
+      };
+    });
+  }
+
   render() {
     const { issue } = this.props;
     const { logs, loading, channel } = this.state;
@@ -112,10 +151,14 @@ export default class CrashTimeline extends PureComponent {
               <Radio.Button value="native">Native</Radio.Button>
               <Radio.Button value="h5">H5</Radio.Button>
               <Radio.Button value="http">网络</Radio.Button>
+              <Radio.Button value="behavior">行为</Radio.Button>
             </Radio.Group>
             <Button size="small" type={this.state.withHttp ? "primary" : "default"} icon="global" style={{ marginLeft: 8 }}
               onClick={() => this.setState({ withHttp: !this.state.withHttp }, this.load)}
             >混入网络事件</Button>
+            <Button size="small" type={this.state.withBehavior ? "primary" : "default"} icon="fund" style={{ marginLeft: 8 }}
+              onClick={() => this.setState({ withBehavior: !this.state.withBehavior }, this.load)}
+            >混入行为轨迹</Button>
             <Button size="small" icon="reload" style={{ marginLeft: 8 }} onClick={this.load} />
           </span>
         }

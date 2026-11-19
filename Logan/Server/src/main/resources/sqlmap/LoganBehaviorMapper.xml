@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  崩溃前行为轨迹（对标 Bugly「崩溃前行为轨迹」）。只有明细表：轨迹是时间流，不做问题聚类。
+--> 
+<mapper namespace="com.meituan.logan.web.mapper.LoganBehaviorMapper">
+
+    <sql id="cols">
+        id AS id, app_id AS appId, device_id AS deviceId, platform AS platform, kind AS kind,
+        name AS name, label AS label, page_url AS pageUrl, trace_id AS traceId,
+        app_version AS appVersion, build_version AS buildVersion, os AS os, os_version AS osVersion,
+        brand AS brand, model AS model, network_type AS networkType, interval_ms AS intervalMs,
+        extra AS extra, occurred_at AS occurredAt, dedup_hash AS dedupHash, add_time AS addTime
+    </sql>
+
+    <insert id="insertIgnore" parameterType="com.meituan.logan.web.dto.LoganBehaviorDTO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT IGNORE INTO logan_behavior
+        (app_id, device_id, platform, kind, name, label, page_url, trace_id,
+         app_version, build_version, os, os_version, brand, model, network_type, interval_ms,
+         extra, occurred_at, dedup_hash, add_time)
+        VALUES (#{appId}, #{deviceId}, #{platform}, #{kind}, #{name}, #{label}, #{pageUrl}, #{traceId},
+         #{appVersion}, #{buildVersion}, #{os}, #{osVersion}, #{brand}, #{model}, #{networkType}, #{intervalMs},
+         #{extra}, #{occurredAt}, #{dedupHash}, #{addTime})
+    </insert>
+
+    <select id="selectById" resultType="com.meituan.logan.web.dto.LoganBehaviorDTO">
+        SELECT <include refid="cols"/> FROM logan_behavior WHERE id = #{id}
+    </select>
+
+    <sql id="filterWhere">
+        <where>
+            app_id = #{q.appId}
+            <if test="q.platform != null"> AND platform = #{q.platform}</if>
+            <if test="q.kind != null and q.kind != ''"> AND kind = #{q.kind}</if>
+            <if test="q.appVersion != null and q.appVersion != ''"> AND app_version = #{q.appVersion}</if>
+            <if test="q.deviceId != null and q.deviceId != ''"> AND device_id = #{q.deviceId}</if>
+            <if test="q.brand != null and q.brand != ''"> AND brand = #{q.brand}</if>
+            <if test="q.model != null and q.model != ''"> AND model = #{q.model}</if>
+            <if test="q.name != null and q.name != ''"> AND name = #{q.name}</if>
+            <if test="q.beginTime != null"> AND occurred_at BETWEEN #{q.beginTime} AND #{q.endTime}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (name LIKE CONCAT('%',#{q.keyword},'%') OR label LIKE CONCAT('%',#{q.keyword},'%')
+                     OR page_url LIKE CONCAT('%',#{q.keyword},'%'))
+            </if>
+        </where>
+    </sql>
+
+    <select id="list" resultType="com.meituan.logan.web.dto.LoganBehaviorDTO">
+        SELECT <include refid="cols"/> FROM logan_behavior
+        <include refid="filterWhere"/>
+        ORDER BY occurred_at DESC
+        <if test="q.offset != null"> LIMIT #{q.offset}, #{q.limit}</if>
+        <if test="q.offset == null"> LIMIT #{q.limit}</if>
+    </select>
+
+    <select id="countList" resultType="long">
+        SELECT COUNT(*) FROM logan_behavior
+        <include refid="filterWhere"/>
+    </select>
+
+    <select id="listAround" resultType="com.meituan.logan.web.dto.LoganBehaviorDTO">
+        SELECT <include refid="cols"/> FROM logan_behavior
+        WHERE app_id = #{appId} AND device_id = #{deviceId}
+          AND occurred_at BETWEEN #{beginTime} AND #{endTime}
+        ORDER BY occurred_at DESC LIMIT #{limit}
+    </select>
+
+    <select id="summary" resultType="map">
+        SELECT COUNT(*) AS events, COUNT(DISTINCT device_id) AS devices
+        FROM logan_behavior
+        <where>
+            app_id = #{appId}
+            AND occurred_at BETWEEN #{beginTime} AND #{endTime}
+            <if test="platform != null"> AND platform = #{platform}</if>
+            <if test="appVersion != null and appVersion != ''"> AND app_version = #{appVersion}</if>
+        </where>
+    </select>
+
+    <select id="topNames" resultType="map">
+        SELECT kind AS kind, name AS name, COUNT(*) AS events, COUNT(DISTINCT device_id) AS devices,
+               MAX(occurred_at) AS lastTime
+        FROM logan_behavior
+        <where>
+            app_id = #{appId}
+            AND name IS NOT NULL AND name != ''
+            AND occurred_at BETWEEN #{beginTime} AND #{endTime}
+            <if test="kind != null and kind != ''"> AND kind = #{kind}</if>
+            <if test="platform != null"> AND platform = #{platform}</if>
+        </where>
+        GROUP BY kind, name
+        ORDER BY events DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

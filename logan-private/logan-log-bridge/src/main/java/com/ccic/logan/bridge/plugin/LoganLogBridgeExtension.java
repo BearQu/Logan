@@ -19,6 +19,9 @@ public abstract class LoganLogBridgeExtension {
     public abstract Property<Boolean> getNetworkEnabled();
     /** true = 给每个吞掉异常的 catch handler 入口装非致命错误上报跳板（默认开；宿主 loganLogBridge { catchEnabled = false } 可关）。 */
     public abstract Property<Boolean> getCatchEnabled();
+    /** true = 把 setOnClickListener/setOnLongClickListener 换成行为轨迹包装跳板（默认开；宿主 loganLogBridge { behaviorEnabled = false } 可关）。 */
+    public abstract Property<Boolean> getBehaviorEnabled();
+
     /** true = 连本工程依赖的库模块/三方 jar 一起插桩（跨模块网络栈用得上）；默认 false 只插桩本模块。 */
     public abstract Property<Boolean> getInstrumentDependencies();
     public abstract ListProperty<String> getIncludePrefixes();
@@ -28,6 +31,7 @@ public abstract class LoganLogBridgeExtension {
         getEnabled().convention(true);
         getNetworkEnabled().convention(true);
         getCatchEnabled().convention(true);
+        getBehaviorEnabled().convention(true);
         getInstrumentDependencies().convention(false);
         getIncludePrefixes().convention(java.util.Collections.emptyList());
         getExcludePrefixes().convention(java.util.Collections.emptyList());

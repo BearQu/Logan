@@ -146,6 +146,26 @@ public final class LoganH5Bridge {
                 if (arr == null || arr.length() == 0) {
                     return false;
                 }
+                // 行为轨迹是独立语义（kind 里有 other，会和错误通道抢），先按 type 整批分流，
+                // 再让其余事件走既有的错误/网络两条通道。
+                if ("behavior".equals(root.optString("type"))) {
+                    int bn = Math.min(arr.length(), MAX_EVENTS_PER_POST);
+                    for (int i = 0; i < bn; i++) {
+                        JSONObject bo = arr.optJSONObject(i);
+                        if (bo == null) {
+                            continue;
+                        }
+                        com.ccic.logan.behavior.LoganBehavior.reportFromH5(
+                                emptyToNull(bo.optString("kind")),
+                                emptyToNull(bo.optString("name")),
+                                emptyToNull(bo.optString("label")),
+                                emptyToNull(bo.optString("pageUrl")),
+                                emptyToNull(bo.optString("traceId")),
+                                emptyToNull(bo.optString("extra")),
+                                bo.optLong("occurredAt", 0L));
+                    }
+                    return true;
+                }
                 List<LoganHttpEvent> events = new ArrayList<LoganHttpEvent>();
                 // 已消费计数：错误类事件交给 LoganError 后不进 http 列表，若只数 http 列表会把
                 // 「全是 JS 异常」的批次误判成失败，JS 侧于是降级直传平台并撞业务 CORS。

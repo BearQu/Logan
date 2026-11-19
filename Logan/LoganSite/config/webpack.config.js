@@ -623,7 +623,10 @@ module.exports = function(webpackEnv) {
       new webpack.IgnorePlugin(/^\.\/locale$/, /moment$/),
       // Generate a service worker script that will precache, and keep up to date,
       // the HTML & assets that are part of the Webpack build.
-      isEnvProduction &&
+      // POC 平台不需要离线 SW（2026-11-19）：构建机 node24 + workbox-build@4.3.1 的
+      // 依赖链里 lodash.template@4.18 内部裸用未定义的 assignWith，任何模板编译都直接
+      // 抛 ReferenceError，SW 生成必挂；平台是内网验收台，没有离线需求，直接关掉。
+      false &&
         new WorkboxWebpackPlugin.GenerateSW({
           clientsClaim: true,
           exclude: [/\.map$/, /asset-manifest\.json$/],

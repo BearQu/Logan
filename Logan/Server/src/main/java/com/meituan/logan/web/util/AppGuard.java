@@ -22,11 +22,31 @@ public final class AppGuard {
         if (appService == null || StringUtils.isBlank(appId) || "unknown".equals(appId)) {
             return false;
         }
+        String id = appId.trim();
         try {
-            return appService.get(appId.trim()) != null;
+            if (appService.get(id) != null) {
+                return true;
+            }
         } catch (Exception e) {
-            LOGGER.warn("app guard query failed for " + appId + ": " + e.getMessage());
-            return false;
+            LOGGER.warn("app guard query failed for " + id + ": " + e.getMessage());
         }
+        // get 把「连接坏了」和「应用真没登记」压成同一个 null，且坏连接只进日志不进响应，
+        // 客户端只能看到一条误导性的「未登记」。查不到就用独立查询复查一次：
+        // list() 从池里另拿连接——查得到说明刚才是连接问题，放行并留痕；真查不到才拒。
+        try {
+            java.util.List<com.meituan.logan.web.dto.LoganAppDTO> all = appService.list();
+            if (all != null) {
+                for (com.meituan.logan.web.dto.LoganAppDTO dto : all) {
+                    if (dto != null && id.equals(dto.getAppId())) {
+                        LOGGER.warn("app guard: get() missed registered app " + id
+                                + " (stale pool connection?) — allowing via list recheck");
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("app guard recheck failed for " + id + ": " + e.getMessage());
+        }
+        return false;
     }
 }

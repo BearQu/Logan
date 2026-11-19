@@ -85,6 +85,12 @@ public abstract class LoganLogBridgeTask extends DefaultTask {
     private static final String WEBVIEW_SET_DESC = "(Landroid/webkit/WebViewClient;)V";
     private static final String WEBVIEW_INSTALLER = "com/ccic/logan/http/LoganWebViewInstaller";
 
+    // ---- 行为轨迹采集规则（编译期把 setOnClickListener/setOnLongClickListener 换成包装跳板）----
+    /** 静态接管跳板：参数类型 Object，栈形状与原 INVOKEVIRTUAL 等价（两引用 + void），零新增指令。 */
+    private static final String CLICK_INSTALLER = "com/ccic/logan/behavior/LoganClickInstaller";
+    private static final String CLICK_SET_LISTENER = "setOnClickListener";
+    private static final String CLICK_SET_LONG_LISTENER = "setOnLongClickListener";
+
     // ---- 非致命错误采集规则（编译期给每个「吞掉异常」的 catch handler 入口装上报跳板）----
     /** catch handler 入口注入的静态跳板：DUP + LDC where + INVOKESTATIC report(Throwable,String)，栈增量为 0。 */
     private static final String CATCH_BRIDGE = "com/ccic/logan/bridge/LoganCatchBridge";
@@ -112,6 +118,10 @@ public abstract class LoganLogBridgeTask extends DefaultTask {
     /** 非致命错误采集规则独立开关（默认开，插件绑到 extension.catchEnabled；关掉只是不再注入，SDK 侧另有 LoganError.setEnabled 一行关整条通道）。 */
     @Input
     public abstract Property<Boolean> getCatchEnabled();
+
+    /** 行为轨迹钩子规则独立开关（默认开，插件绑到 extension.behaviorEnabled；SDK 侧另有 LoganBehavior.setEnabled 一行关整条通道）。 */
+    @Input
+    public abstract Property<Boolean> getBehaviorEnabled();
 
     @InputFiles
     @SkipWhenEmpty
@@ -178,7 +188,8 @@ public abstract class LoganLogBridgeTask extends DefaultTask {
         boolean logOn = Boolean.TRUE.equals(getBridgeEnabled().get());
         boolean netOn = Boolean.TRUE.equals(getNetworkEnabled().get());
         boolean catchOn = Boolean.TRUE.equals(getCatchEnabled().get());
-        if (!logOn && !netOn && !catchOn) return null;
+        boolean behOn = Boolean.TRUE.equals(getBehaviorEnabled().get());
+        if (!logOn && !netOn && !catchOn && !behOn) return null;
         if (!shouldRewrite(relPath)) return null;
         byte[] cur = code;
         if (catchOn) {
@@ -187,8 +198,8 @@ public abstract class LoganLogBridgeTask extends DefaultTask {
                 cur = c;
             }
         }
-        if (logOn || netOn) {
-            byte[] b = transform(relPath, cur, logOn, netOn);
+        if (logOn || netOn || behOn) {
+            byte[] b = transform(relPath, cur, logOn, netOn, behOn);
             if (b != null) {
                 cur = b;
             }
@@ -350,8 +361,31 @@ public abstract class LoganLogBridgeTask extends DefaultTask {
         return type.endsWith("WebViewClient");
     }
 
+    /**
+     * 判定「单参数监听器 setter」：只认以 OnClickListener / OnLongClickListener 结尾的监听器类型，
+     * owner 不参与判定，故各内核与自绘控件同样能装上。调用方自身已在 HARD_EXCLUDE
+     * （com/ccic/logan/behavior/）内排除，跳板内部再调 setter 不会递归。
+     */
+    private static boolean isListenerSetterDesc(String mDesc) {
+        if (mDesc == null || mDesc.length() < 20) {
+            return false;
+        }
+        if (!mDesc.endsWith(";)V") || mDesc.charAt(0) != '(') {
+            return false;
+        }
+        if (mDesc.indexOf('(', 1) >= 0) {
+            return false;
+        }
+        String arg = mDesc.substring(1, mDesc.length() - 3);
+        if (arg.length() < 2 || arg.charAt(0) != 'L') {
+            return false;
+        }
+        String type = arg.substring(1);
+        return type.endsWith("OnClickListener") || type.endsWith("OnLongClickListener");
+    }
+
     /** 返回改写后的字节码；类里没有 Log 静态调用点返回 null。 */
-    private byte[] transform(String relPath, byte[] code, boolean logOn, boolean netOn) {
+    private byte[] transform(String relPath, byte[] code, boolean logOn, boolean netOn, boolean behOn) {
         try {
             ClassReader cr = new ClassReader(code);
             ClassWriter cw = new ClassWriter(0);
@@ -385,6 +419,17 @@ public abstract class LoganLogBridgeTask extends DefaultTask {
                                     && isWebViewClientSetterDesc(mDesc)) {
                                 // 参数个数与顺序完全一致，仅换为静态跳板，零新增指令。描述符必须写 (Object,Object)V：调用点可能是任意内核（TBS com.tencent.smtt.sdk.WebView / UC 等，均非 android.webkit.WebView 子类），若写 android.webkit 类型 ART 校验器会以「register has type BridgeWebView but expected android.webkit.WebView」拒绝整个类；跳板 LoganWebViewInstaller.setWebViewClient(Object,Object) 本身就是 Object 形参。
                                 super.visitMethodInsn(Opcodes.INVOKESTATIC, WEBVIEW_INSTALLER, WEBVIEW_SET_CLIENT,
+                                        "(Ljava/lang/Object;Ljava/lang/Object;)V", false);
+                                hit[0] = true;
+                                return;
+                            }
+                            if (behOn && opcode == Opcodes.INVOKEVIRTUAL && !itf
+                                    && (CLICK_SET_LISTENER.equals(mName) || CLICK_SET_LONG_LISTENER.equals(mName))
+                                    && isListenerSetterDesc(mDesc)) {
+                                // 与原调用点栈形状等价（view + listener 两个引用操作数、void 返回），不新增指令、不动 maxStack。
+                                // 描述符用 (Object,Object)V：各内核与自绘控件各自声明同名 setter，其监听器类型并非 android.view 的接口，
+                                // 写具体接口类型会被 ART 校验器按 register 实际类型拒绝整个类；跳板形参本身就是 Object。
+                                super.visitMethodInsn(Opcodes.INVOKESTATIC, CLICK_INSTALLER, mName,
                                         "(Ljava/lang/Object;Ljava/lang/Object;)V", false);
                                 hit[0] = true;
                                 return;

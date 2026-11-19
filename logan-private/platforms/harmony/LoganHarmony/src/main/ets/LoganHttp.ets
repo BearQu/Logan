@@ -66,6 +66,8 @@ let seenIds: string[] = [];
 
 let h5ErrorHandler: ((name: string, message: string, stack: string, pageUrl: string, kind: string) => void) | null = null;
 
+let h5BehaviorHandler: ((kind: string, name: string, label: string, pageUrl: string, traceId: string, extra: string, occurredAt: number) => void) | null = null;
+
 
 function trim(s: string | undefined | null): string {
   return typeof s === 'string' ? s.trim() : '';
@@ -279,6 +281,27 @@ export class LoganHttp {
   static reportH5Payload(json: string): boolean {
     try {
       const parsed = JSON.parse(json) as Record<string, Object>;
+      // 行为轨迹通道：H5 脚本以 {"type":"behavior",events:[…]} 上报，分流给 LoganBehavior（不误入 http 表）
+      const btp = parsed["type"];
+      if (typeof btp === "string" && (btp as string) === "behavior") {
+        const brows = parsed["events"];
+        if (!brows || !Array.isArray(brows) || h5BehaviorHandler === null) { return false; }
+        let bhN = 0;
+        for (const bit of brows as Object[]) {
+          const br = bit as Record<string, Object>;
+          const bstr = (k: string): string => {
+            const v = br[k];
+            return typeof v === "string" ? (v as string) : "";
+          };
+          const bnum = (k: string): number => {
+            const v = br[k];
+            return typeof v === "number" ? (v as number) : 0;
+          };
+          h5BehaviorHandler(bstr("kind"), bstr("name"), bstr("label"), bstr("pageUrl"), bstr("traceId"), bstr("extra"), bnum("occurredAt"));
+          bhN++;
+        }
+        return bhN > 0;
+      }
       const raws = parsed['events'];
       if (!raws || !Array.isArray(raws)) { return false; }
       let n = 0;
@@ -368,6 +391,11 @@ export class LoganHttp {
   /** 由 LoganError 模块注册（避免两模块循环 import） */
   static setH5ErrorHandler(cb: (name: string, message: string, stack: string, pageUrl: string, kind: string) => void): void {
     h5ErrorHandler = cb;
+  }
+
+  /** 由 LoganBehavior 模块注册（避免两模块循环 import） */
+  static setH5BehaviorHandler(cb: (kind: string, name: string, label: string, pageUrl: string, traceId: string, extra: string, occurredAt: number) => void): void {
+    h5BehaviorHandler = cb;
   }
 
   static config(): HttpConfig | null { return cfg; }

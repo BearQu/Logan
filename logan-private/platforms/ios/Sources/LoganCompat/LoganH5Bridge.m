@@ -6,6 +6,7 @@
 #import "LoganHttp.h"
 #import "LoganH5Script.h"
 #import "LoganErrorKit.h"
+#import "LoganBehaviorKit.h"
 #import <WebKit/WebKit.h>
 #import <objc/runtime.h>
 
@@ -152,6 +153,25 @@ static BOOL LoganIsErrorKind(NSString *k) {
         if (d.length == 0) { return; }
         NSDictionary *obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
         NSArray *events = [obj isKindOfClass:[NSDictionary class]] ? obj[@"events"] : nil;
+        // 行为轨迹是独立语义（kind 白名单里有 other，会和错误通道抢），先按 type 整批分流，
+        // 再让其余事件走既有的错误/网络两条通道 —— 与安卓 LoganH5Bridge 同构。
+        NSString *batchType = [obj[@"type"] isKindOfClass:[NSString class]] ? obj[@"type"] : nil;
+        if ([batchType isEqualToString:@"behavior"]) {
+            if (![events isKindOfClass:[NSArray class]]) { return; }
+            for (NSDictionary *raw in events) {
+                if (![raw isKindOfClass:[NSDictionary class]]) { continue; }
+                NSString *bk = [raw[@"kind"] isKindOfClass:[NSString class]] ? raw[@"kind"] : nil;
+                NSString *bn = [raw[@"name"] isKindOfClass:[NSString class]] ? raw[@"name"] : nil;
+                NSString *bl = [raw[@"label"] isKindOfClass:[NSString class]] ? raw[@"label"] : nil;
+                NSString *bp = [raw[@"pageUrl"] isKindOfClass:[NSString class]] ? raw[@"pageUrl"] : nil;
+                NSString *bt = [raw[@"traceId"] isKindOfClass:[NSString class]] ? raw[@"traceId"] : nil;
+                NSString *bx = [raw[@"extra"] isKindOfClass:[NSString class]] ? raw[@"extra"] : nil;
+                long long bo = [raw[@"occurredAt"] respondsToSelector:@selector(longLongValue)] ? [raw[@"occurredAt"] longLongValue] : 0;
+                [[LoganBehaviorKit class] reportBehaviorFromH5WithKind:bk name:bn label:bl
+                                                       pageUrl:bp traceId:bt extra:bx occurredAt:bo];
+            }
+            return;
+        }
         if (![events isKindOfClass:[NSArray class]]) { return; }
         for (NSDictionary *raw in events) {
             if (![raw isKindOfClass:[NSDictionary class]]) { continue; }

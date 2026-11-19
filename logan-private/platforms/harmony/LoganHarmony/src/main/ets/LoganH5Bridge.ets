@@ -198,10 +198,10 @@ const LOGAN_H5_JS = String.raw`/* Logan H5 监控注入脚本（零依赖 ES5，
   setInterval(flushErr, FLUSH_MS);
   if (document && document.addEventListener) {
     document.addEventListener('visibilitychange', function () {
-      try { if (document.visibilityState === 'hidden') { flush(); flushErr(); } } catch (e) {}
+      try { if (document.visibilityState === 'hidden') { flush(); flushErr(); flushBehavior(); } } catch (e) {}
     });
   }
-  window.addEventListener('beforeunload', function () { try { flush(); flushErr(); } catch (e) {} });
+  window.addEventListener('beforeunload', function () { try { flush(); flushErr(); flushBehavior(); } catch (e) {} });
 
   function classifyErr(kind, msg) {
     try {
@@ -414,23 +414,191 @@ const LOGAN_H5_JS = String.raw`/* Logan H5 监控注入脚本（零依赖 ES5，
     window.addEventListener('popstate', onRoute);
   } catch (e) {}
 
-  // 显式入口：特殊客户端可自己报一条（例如自研网络层）
-  window.LoganH5Report = function (ev) {
+  // ---------- 崩溃前行为轨迹（SPA 路由 + 点击），与原生 LoganBehavior 共用 kind 白名单 ----------
+  var bq = [];
+  var MAX_B_QUEUE = 200;
+  var B_KINDS = { page: 1, click: 1, custom: 1, foreground: 1, background: 1, launch: 1, exit: 1, input: 1, scroll: 1, refresh: 1, tab: 1, dialog: 1, other: 1 };
+  var lastBehaviorKey = '';
+  var lastBehaviorAt = 0;
+  function bclip(v, max) {
     try {
-      var e = ev || {};
-      var toErr = e.kind === 'error' || e.kind === 'caught' || e.kind === 'business'
-        || e.kind === 'promise' || e.kind === 'ui' || e.kind === 'resource'
-        || (e.name && !e.url);
+      if (v === null || v === undefined) return '';
+      var s = String(v).replace(/\s+/g, ' ').trim();
+      if (!s) return '';
+      return s.length > max ? s.slice(0, max) : s;
+    } catch (e) { return ''; }
+  }
+  function pushBehavior(kind, name, label, extra) {
+    try {
+      if (!B_KINDS[kind]) { kind = 'other'; }
+      var n = bclip(name, 256);
+      var lb = bclip(label, 500);
+      if (!n && !lb) { return; }                      // 三要素全空不造数据
+      var ts = now();
+      var key = kind + '|' + n + '|' + lb;
+      if (key === lastBehaviorKey && ts - lastBehaviorAt < 400) { return; }   // 抖动抑制
+      lastBehaviorKey = key; lastBehaviorAt = ts;
+      bq.push({
+        kind: kind, name: n, label: lb || null,
+        pageUrl: page(), traceId: rid(), occurredAt: ts,
+        extra: extra ? bclip(extra, 500) : null
+      });
+      if (bq.length >= 30) { flushBehavior(); }
+    } catch (e) {}
+  }
+  function flushBehavior() {
+    try {
+      if (!bq.length) return;
+      var batch = bq.splice(0, MAX_B_QUEUE);
+      var payload = JSON.stringify({ type: 'behavior', events: batch });
+      if (bridge && typeof bridge.postJson === 'function') {
+        try {
+          if (bridge.postJson(payload) === true) { return; }
+        } catch (e) {}
+      }
+      if (!baseUrl || !window.fetch) { return; }
+      window.fetch(baseUrl + '/logan/behavior/report.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: cfg.appId || '', deviceId: cfg.deviceId || '', platform: cfg.platform || 1,
+          appVersion: cfg.appVersion || '', buildVersion: cfg.buildVersion || '', os: 'h5',
+          events: batch
+        }),
+        credentials: 'omit', keepalive: true, cache: 'no-store'
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  setInterval(flushBehavior, FLUSH_MS);
+  // 看门狗：页面被挂后台时浏览器会节流 setInterval（可能整段停摆），桥接/降级两条通道
+  // 全靠它出队。visibility 翻回 visible 或收到宿主 LoganH5Flush 之外的任何时机都补一次，
+  // 保证「探针跑完即切走」的场景行为批不滞留（PoC 实测：WKWebView 被盖住后 3s 定时器 0 触发）。
+  document.addEventListener('visibilitychange', function () { try { flush(); flushErr(); flushBehavior(); } catch (e) {} });
+
+  function routeName() {
+    try {
+      var h = location.href || '';
+      var m = h.replace(/^https?:\/\/[^/]+/i, '');
+      return m.length > 256 ? m.slice(0, 256) : m;
+    } catch (e) { return ''; }
+  }
+  function reportRoute(via) {
+    try {
+      var to = routeName();
+      if (!to) return;
+      pushBehavior('page', to, null, 'via=' + via);
+    } catch (e) {}
+  }
+  // SPA 用 pushState/replaceState 换页时不会触发 popstate/hashchange，包一层才拿得到轨迹
+  try {
+    if (window.history && typeof window.history.pushState === 'function') {
+      var rawPush = window.history.pushState;
+      window.history.pushState = function (a, b, url) {
+        var r = rawPush.apply(this, arguments);
+        try { reportRoute('pushState'); } catch (e) {}
+        return r;
+      };
+    }
+    if (window.history && typeof window.history.replaceState === 'function') {
+      var rawReplace = window.history.replaceState;
+      window.history.replaceState = function (a, b, url) {
+        var r = rawReplace.apply(this, arguments);
+        try { reportRoute('replaceState'); } catch (e) {}
+        return r;
+      };
+    }
+  } catch (e) {}
+  try {
+    window.addEventListener('hashchange', function () { try { reportRoute('hashchange'); } catch (e) {} });
+    window.addEventListener('popstate', function () { try { reportRoute('popstate'); } catch (e) {} });
+  } catch (e) {}
+
+  /** 点击目标的人话描述：可见文本 > aria-label > 标题/alt > 按钮类控件退化到 tagName。 */
+  function clickLabel(el) {
+    try {
+      if (!el) return '';
+      var pick = function (v) { try { return v ? bclip(v, 200) : ''; } catch (e) { return ''; } };
+      var txt = pick(el.innerText || el.textContent);
+      if (txt) return txt;
+      var t2 = el.tagName ? String(el.tagName).toLowerCase() : '';
+      if (t2 === 'input' || t2 === 'textarea') {
+        // 输入框只记类型与占位符，绝不记用户输入的内容（隐私）
+        return 'input:' + pick(el.type || t2) + (el.placeholder ? ':' + pick(el.placeholder) : '');
+      }
+      var byAttr = pick(el.getAttribute && el.getAttribute('aria-label'))
+        || pick(el.getAttribute && el.getAttribute('title'))
+        || pick(el.getAttribute && el.getAttribute('alt'))
+        || pick(el.getAttribute && el.getAttribute('data-logan'))
+        || pick(el.getAttribute && el.getAttribute('name'));
+      if (byAttr) return byAttr;
+      if (t2 === 'button' || t2 === 'a' || t2 === 'img') {
+        return t2 + (el.className ? ':' + bclip(String(el.className), 60) : '');
+      }
+      return '';   // 纯布局元素（div/span）的点击不记，轨迹里全是噪音
+    } catch (e) { return ''; }
+  }
+  try {
+    if (document && document.addEventListener) {
+      document.addEventListener('click', function (ev) {
+        try {
+          var el = ev && (ev.target || null);
+          var up = 0;
+          var hit = null;
+          var cur = el;
+          // 往上找几层拿到真正可点击的语义节点（图标在 button 里是常态）
+          while (cur && up < 5) {
+            var lb = clickLabel(cur);
+            if (lb) { hit = { node: cur, label: lb }; break; }
+            cur = cur.parentElement || null;
+            up++;
+          }
+          if (!hit) return;
+          var tag = hit.node && hit.node.tagName ? String(hit.node.tagName).toLowerCase() : 'unknown';
+          var href = '';
+          try { href = hit.node && hit.node.tagName && hit.node.tagName.toLowerCase() === 'a' ? String(hit.node.getAttribute('href') || '') : ''; } catch (e) {}
+          pushBehavior('click', tag, hit.label, href ? 'href=' + bclip(href, 200) : null);
+        } catch (e) {}
+      }, true);
+    }
+  } catch (e) {}
+  try {
+    if (document && document.addEventListener) {
+      document.addEventListener('visibilitychange', function () {
+        try {
+          if (document.visibilityState === 'visible') { pushBehavior('foreground', routeName(), null, null); }
+          else { pushBehavior('background', routeName(), null, null); flushBehavior(); }
+        } catch (e) {}
+      });
+    }
+    pushBehavior('launch', routeName(), null, 'cold=h5');
+  } catch (e) {}
+
+  // 显式入口 1：行为轨迹。业务/自研路由主动记一条，语义与自动采集完全同源（同一队列、同一通道、同一白名单）。
+  window.LoganH5Behavior = function (kind, name, label, extra) {
+    try {
+      pushBehavior(typeof kind === 'string' && kind ? kind : 'custom', name, label, extra);
+      return true;
+    } catch (e) { return false; }
+  };
+  // 显式入口 2：网络事件。自研网络层（非 fetch/XHR）一行接入，与 hook 到的请求同构；
+  // 带 name 无 url 的按错误语义转错误通道，避免服务端归一成无主事件。
+  window.LoganH5Report = function (obj) {
+    try {
+      if (!obj || typeof obj !== 'object') { return false; }
+      var o = Object.assign({}, obj);
+      var toErr = o.kind === 'error' || o.kind === 'caught' || o.kind === 'business'
+        || o.kind === 'promise' || o.kind === 'ui' || o.kind === 'resource'
+        || (o.name && !o.url);
       if (toErr) {
-        var o = Object.assign({}, e);
         if (o.kind === 'error') { o.kind = 'caught'; }
         pushErr(o);
-      } else {
-        push(Object.assign({ kind: 'h5', source: 'manual' }, e));
+        return true;
       }
-    } catch (e) {}
+      push(Object.assign({ kind: 'h5', source: 'manual' }, o));
+      return true;
+    } catch (e) { return false; }
   };
-  window.LoganH5Flush = function () { try { flush(); } catch (e) {} };
+  window.LoganH5Flush = function () { try { flush(); flushErr(); flushBehavior(); } catch (e) {} };
 })();`;
 
 /** document-start 注入用（宿主挂到 Web 组件 .javaScriptOnDocumentStart） */

@@ -336,6 +336,10 @@ export function fetchHttpAroundApi(params) {
   return instance.get("/logan/http/around.json", { params });
 }
 
+export function fetchBehaviorAroundApi(params) {
+  return instance.get("/logan/behavior/around.json", { params });
+}
+
 
 export function fetchHttpIssuesApi(params) {
   return instance.get("/logan/http/issues.json", { params });

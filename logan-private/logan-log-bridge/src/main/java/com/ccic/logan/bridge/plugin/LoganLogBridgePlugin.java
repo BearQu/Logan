@@ -24,6 +24,7 @@ public class LoganLogBridgePlugin implements Plugin<Project> {
             "android/util/Log",
             "com/ccic/logan/bridge/",   // 桥自身三个跳板类都不能改写，否则递归
             "com/ccic/logan/error/",   // 错误采集层自身：catch 注入会自噬（LoganError 内部大量 try/catch）
+            "com/ccic/logan/behavior/",   // 行为轨迹采集层自身：点击包装跳板若被改写会递归
             "com/dianping/logan/",
             "com/ccic/logan/crash/",
             "com/ccic/logan/http/",
@@ -64,6 +65,8 @@ public class LoganLogBridgePlugin implements Plugin<Project> {
                         t.getBridgeEnabled().set(ext.getEnabled());
                         t.getNetworkEnabled().set(ext.getNetworkEnabled());
                         t.getCatchEnabled().set(ext.getCatchEnabled());
+                        // 行为轨迹钩子规则：与 catchEnabled 同构，宿主一行 loganLogBridge { behaviorEnabled = false } 可关整条编译期钩子
+                        t.getBehaviorEnabled().set(ext.getBehaviorEnabled());
                         t.getIncludePrefixes().set(ext.getIncludePrefixes());
                         t.getExcludePrefixes().set(ext.getExcludePrefixes());
                         t.getHardExcludePrefixes().set(java.util.Arrays.asList(HARD_EXCLUDE));

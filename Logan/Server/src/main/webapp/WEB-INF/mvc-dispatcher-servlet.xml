@@ -27,7 +27,15 @@
         <property name="maxActive" value="100"/>
         <property name="maxWait" value="1000"/>
         <property name="testOnBorrow" value="true"/>
-        <property name="validationInterval" value="28800000"/>
+        <!-- 曾经的坑：validationInterval=28800000（8h 内免检）叠加 MySQL 默认 wait_timeout=28800（8h）
+             与 maxIdle=100（空闲连接永不销毁），夜间静默后池里全是已断连接，借出即
+             "No operations allowed after connection closed"，AppGuard 查不到应用 → 上报全被 400 拒收。
+             改为：空连接 5 分钟即回收，闲置 5 分钟主动体检，validationQuery 超时 5s。 -->
+        <property name="validationQuery" value="SELECT 1"/>
+        <property name="validationQueryTimeout" value="5"/>
+        <property name="testWhileIdle" value="true"/>
+        <property name="timeBetweenEvictionRunsMillis" value="300000"/>
+        <property name="minEvictableIdleTimeMillis" value="300000"/>
     </bean>
 
     <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">

@@ -8,9 +8,11 @@ import com.meituan.logan.web.dto.LoganCrashFixDTO;
 import com.meituan.logan.web.dto.LoganCrashIssueDTO;
 import com.meituan.logan.web.mapper.LoganCrashFixMapper;
 import com.meituan.logan.web.mapper.LoganCrashMapper;
+import com.meituan.logan.web.dto.LoganBehaviorDTO;
 import com.meituan.logan.web.dto.LoganErrorDTO;
 import com.meituan.logan.web.dto.LoganHttpDTO;
 import com.meituan.logan.web.mapper.LoganCrashTimelineMapper;
+import com.meituan.logan.web.mapper.LoganBehaviorMapper;
 import com.meituan.logan.web.mapper.LoganErrorMapper;
 import com.meituan.logan.web.mapper.LoganHttpMapper;
 import com.meituan.logan.web.service.LoganCrashEvidenceService;
@@ -38,6 +40,7 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
     private static final int STATUS_FIXED = 2;
     private static final int MAX_HTTP_ROWS = 120;
     private static final int MAX_ERROR_ROWS = 60;
+    private static final int MAX_BEHAVIOR_ROWS = 120;
 
     @Resource
     private LoganCrashMapper crashMapper;
@@ -49,6 +52,8 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
     private LoganHttpMapper httpMapper;
     @Resource
     private LoganErrorMapper errorMapper;
+    @Resource
+    private LoganBehaviorMapper behaviorMapper;
 
     @Override
     public JSONObject evidenceForCrash(long crashId, int beforeSeconds, int afterSeconds) {
@@ -69,6 +74,8 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
                 crash.getCrashTime(), win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_HTTP_ROWS));
         bundle.put("errorEvents", errorRows(crash.getAppId(), crash.getDeviceId(),
                 crash.getCrashTime(), win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_ERROR_ROWS));
+        bundle.put("behaviorEvents", behaviorRows(crash.getAppId(), crash.getDeviceId(),
+                crash.getCrashTime(), win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_BEHAVIOR_ROWS));
         bundle.put("fixReports", fixArray(crash.getAppId(), crash.getFingerprint(), 20));
         bundle.put("meta", metaNode(beforeSeconds, afterSeconds));
         bundle.put("evidenceHash", sha1(bundle.toJSONString()));
@@ -112,6 +119,9 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
         bundle.put("errorEvents", latest == null ? new ArrayList<Map<String, Object>>()
                 : errorRows(latest.getAppId(), latest.getDeviceId(), latest.getCrashTime(),
                         win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_ERROR_ROWS));
+        bundle.put("behaviorEvents", latest == null ? new ArrayList<Map<String, Object>>()
+                : behaviorRows(latest.getAppId(), latest.getDeviceId(), latest.getCrashTime(),
+                        win(beforeSeconds, DEFAULT_BEFORE), win(afterSeconds, DEFAULT_AFTER), MAX_BEHAVIOR_ROWS));
         bundle.put("fixReports", fixArray(issue.getAppId(), issue.getFingerprint(), 20));
         bundle.put("meta", metaNode(beforeSeconds, afterSeconds));
         bundle.put("evidenceHash", sha1(bundle.toJSONString()));
@@ -162,6 +172,8 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
         merged.addAll(safeList(httpRowsRaw(appId, deviceId, begin, end, cap)));
         // 非致命错误也进时间轴：崩溃前反复出现的可捕获异常常常是同一根因的前兆
         merged.addAll(safeList(errorRowsRaw(appId, deviceId, begin, end, cap)));
+        // 用户行为轨迹也进时间轴：崩溃前点了什么、走了哪些页面，就是复现路径
+        merged.addAll(safeList(behaviorRowsRaw(appId, deviceId, begin, end, cap)));
         for (Map<String, Object> row : merged) {
             Object c = row.get("content");
             if (c != null && String.valueOf(c).length() > MAX_LOG_CHARS) {
@@ -296,6 +308,93 @@ public class LoganCrashEvidenceServiceImpl implements LoganCrashEvidenceService 
             out.add(row);
         }
         return out;
+    }
+
+    /**
+     * 崩溃前后的用户行为轨迹（页面进入 / 点击 / 自定义埋点 / 前后台切换）。
+     * 既作为证据包的 behaviorEvents 结构化字段，也以摘要形式混入时间轴 ——
+     * 崩溃前走了哪些页面、点了什么按钮，就是最直接的复现路径。
+     */
+    private List<Map<String, Object>> behaviorRows(String appId, String deviceId, long crashTime,
+            int beforeSeconds, int afterSeconds, int limit) {
+        if (StringUtils.isBlank(deviceId) || crashTime <= 0) {
+            return Collections.emptyList();
+        }
+        int beforeSec = win(beforeSeconds, DEFAULT_BEFORE);
+        int afterSec = win(afterSeconds, DEFAULT_AFTER);
+        long begin = crashTime - beforeSec * 1000L;
+        long end = crashTime + afterSec * 1000L;
+        return behaviorRowsRaw(appId, deviceId, begin, end, Math.max(1, Math.min(300, limit)));
+    }
+
+    private List<Map<String, Object>> behaviorRowsRaw(String appId, String deviceId, long begin, long end, int cap) {
+        if (StringUtils.isBlank(deviceId)) {
+            return Collections.emptyList();
+        }
+        List<LoganBehaviorDTO> rows;
+        try {
+            rows = behaviorMapper.listAround(appId, deviceId, begin, end, cap);
+        } catch (Exception e) {
+            // 表还没建（未接入行为采集）属于正常状态，降级为空而不是刷错误日志
+            LOGGER.warn("query behavior events around crash skipped: " + e.getMessage());
+            return Collections.emptyList();
+        }
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (LoganBehaviorDTO d : rows) {
+            Map<String, Object> row = new HashMap<String, Object>();
+            row.put("detailId", d.getId());
+            row.put("channel", "behavior");
+            row.put("logType", 93);
+            row.put("logTime", d.getOccurredAt());
+            row.put("content", behaviorSummary(d));
+            row.put("appVersion", d.getAppVersion());
+            row.put("buildVersion", d.getBuildVersion());
+            row.put("kind", d.getKind());
+            row.put("name", d.getName());
+            row.put("label", cut(d.getLabel(), MAX_LOG_CHARS));
+            row.put("pageUrl", d.getPageUrl());
+            row.put("traceId", d.getTraceId());
+            row.put("intervalMs", d.getIntervalMs());
+            row.put("extra", cut(d.getExtra(), 1000));
+            row.put("networkType", d.getNetworkType());
+            row.put("nearCrash", false);
+            out.add(row);
+        }
+        return out;
+    }
+
+    /** 轨迹一行摘要：给时间轴当 content 用，人一眼能读出「在哪个页面点了什么」。 */
+    private static String behaviorSummary(LoganBehaviorDTO d) {
+        StringBuilder sb = new StringBuilder();
+        String kind = nvl(d.getKind(), "custom");
+        if ("page".equals(kind)) {
+            sb.append("[PAGE] ");
+        } else if ("click".equals(kind)) {
+            sb.append("[CLICK] ");
+        } else if ("foreground".equals(kind)) {
+            sb.append("[FOREGROUND] ");
+        } else if ("background".equals(kind)) {
+            sb.append("[BACKGROUND] ");
+        } else if ("launch".equals(kind)) {
+            sb.append("[LAUNCH] ");
+        } else if ("exit".equals(kind)) {
+            sb.append("[EXIT] ");
+        } else {
+            sb.append("[").append(kind.toUpperCase()).append("] ");
+        }
+        if (StringUtils.isNotBlank(d.getName())) {
+            sb.append(d.getName());
+        }
+        if (StringUtils.isNotBlank(d.getLabel())) {
+            sb.append(" \"").append(cut(d.getLabel(), 120)).append("\"");
+        }
+        if (StringUtils.isNotBlank(d.getPageUrl())) {
+            sb.append(" @").append(cut(d.getPageUrl(), 120));
+        }
+        return sb.toString();
     }
 
     private static String errorSummary(LoganErrorDTO d) {
